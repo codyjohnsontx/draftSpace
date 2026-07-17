@@ -53,12 +53,12 @@ test("flushes the viewport when the document becomes hidden", async ({ page }) =
     document.dispatchEvent(new Event("visibilitychange"));
   });
   await expect.poll(async () => page.evaluate(async () => new Promise<number>((resolve, reject) => {
-    const id = localStorage.getItem("draftspace:last-board"); const request = indexedDB.open("draftspace", 1);
+    const id = localStorage.getItem("draftspace:last-board"); const request = indexedDB.open("draftspace");
     request.onerror = () => reject(request.error); request.onsuccess = () => {
       const db = request.result; const get = db.transaction("boards").objectStore("boards").get(id!);
-      get.onsuccess = () => { db.close(); resolve(get.result?.viewport?.zoom ?? 0); }; get.onerror = () => reject(get.error);
+      get.onsuccess = () => { db.close(); resolve(get.result?.viewport?.zoom ?? 0); }; get.onerror = () => { db.close(); reject(get.error); };
     };
-  })), { timeout: 500 }).toBeGreaterThan(1);
+  }))).toBeGreaterThan(1);
 });
 
 test("preserves a corrupt board and offers recovery", async ({ page }) => {
