@@ -23,10 +23,12 @@ button { color: inherit; }
 .scene-canvas { display: block; }
 .interaction-overlay { pointer-events: none; overflow: visible; }
 .resize-handle { fill: #fffdfa; stroke: var(--accent); stroke-width: 1.5; rx: 2; pointer-events: all; }
-.selection-frame { fill: none; stroke: #fffdfa; stroke-width: 4; vector-effect: non-scaling-stroke; }
+.selection-frame-contrast, .selection-frame { fill: none; vector-effect: non-scaling-stroke; pointer-events: none; }
+.selection-frame-contrast { stroke: #fffdfa; stroke-width: 4; }
+.selection-frame { stroke: var(--accent); stroke-width: 1.5; }
 .selection-frame + .resize-handle { pointer-events: all; }
-.selection-frame { filter: drop-shadow(0 0 0 var(--accent)); }
 .marquee { fill: rgba(184, 95, 63, .08); stroke: var(--accent); stroke-width: 1; stroke-dasharray: 5 4; }
+.snap-frame { fill: none; stroke: #4f8874; stroke-width: 1.5; stroke-dasharray: 3 4; vector-effect: non-scaling-stroke; animation: snap-in .12s ease both; }
 
 .top-bar {
   position: fixed; z-index: 20; top: 14px; left: 16px; right: 16px; height: 48px;
@@ -79,6 +81,7 @@ kbd { display: inline-grid; min-width: 21px; height: 21px; place-items: center; 
 @keyframes rail-in { from { opacity: 0; transform: translate(-50%, 10px) scale(.96); } }
 @keyframes hint-in { from { opacity: 0; transform: translate(-50%, calc(-50% + 8px)); } }
 @keyframes spin { to { transform: rotate(360deg); } }
+@keyframes snap-in { from { opacity: 0; } }
 
 @media (max-width: 720px) {
   .top-bar { left: 8px; right: 8px; top: 8px; }
