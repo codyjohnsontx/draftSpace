@@ -1,12 +1,12 @@
 "use client";
 
-import { CloudOff, Cloudy, Download, HelpCircle, Menu, Redo2, Undo2 } from "lucide-react";
+import { Download, HelpCircle, Menu, Redo2, Undo2 } from "lucide-react";
 import { useBoardStore } from "@/stores/board-store";
+import { PersistenceStatus } from "./persistence-status";
+import type { PersistenceController } from "@/hooks/use-board-persistence";
 
-const statusCopy = { loading: "Opening…", saving: "Saving…", saved: "Saved locally", failed: "Save failed", offline: "Saved offline" } as const;
-
-export function TopBar() {
-  const board = useBoardStore((s) => s.board); const status = useBoardStore((s) => s.saveStatus);
+export function TopBar({ persistence }: { persistence: PersistenceController }) {
+  const board = useBoardStore((s) => s.board);
   const history = useBoardStore((s) => s.history); const rename = useBoardStore((s) => s.rename);
   if (!board) return null;
   return <header className="top-bar" aria-label="Board controls">
@@ -14,7 +14,7 @@ export function TopBar() {
     <button className="icon-button mobile-only" aria-label="Board menu" title="Board menu"><Menu size={18} /></button>
     <input key={board.name} className="board-name" aria-label="Board name" defaultValue={board.name} onBlur={(e) => rename(e.currentTarget.value)} onKeyDown={(e) => { if (e.key === "Enter") e.currentTarget.blur(); }} />
     <div className="top-actions">
-      <span className={`save-status ${status}`} title={statusCopy[status]}>{status === "failed" ? <CloudOff size={14} /> : <Cloudy size={14} />}<span>{statusCopy[status]}</span></span>
+      <PersistenceStatus controller={persistence} />
       <span className="divider" />
       <button className="icon-button" onClick={() => useBoardStore.getState().undo()} disabled={!history.undo.length} aria-label="Undo" title="Undo (⌘Z)"><Undo2 size={17} /></button>
       <button className="icon-button" onClick={() => useBoardStore.getState().redo()} disabled={!history.redo.length} aria-label="Redo" title="Redo (⌘⇧Z)"><Redo2 size={17} /></button>

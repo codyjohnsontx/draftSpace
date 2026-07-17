@@ -5,15 +5,11 @@ import type { Viewport } from "@/core/board/types";
 import { createBoard, createRectangle, newId, now } from "@/core/board/factory";
 import { emptyHistory, pushHistory, redoBoard, transact, undoBoard, type HistoryState } from "@/features/history/history";
 
-export type SaveStatus = "loading" | "saving" | "saved" | "failed" | "offline";
-
 type BoardStore = {
   board: BoardDocument | null;
   history: HistoryState;
-  saveStatus: SaveStatus;
   revision: number;
   setBoard: (board: BoardDocument) => void;
-  setSaveStatus: (status: SaveStatus) => void;
   commit: (label: string, recipe: (draft: BoardDocument) => void) => void;
   createRectangle: (bounds: Bounds) => string | null;
   deleteElements: (ids: string[]) => void;
@@ -28,10 +24,8 @@ type BoardStore = {
 export const useBoardStore = create<BoardStore>((set, get) => ({
   board: null,
   history: emptyHistory(),
-  saveStatus: "loading",
   revision: 0,
-  setBoard: (board) => set({ board, history: emptyHistory(), saveStatus: "saved", revision: 0 }),
-  setSaveStatus: (saveStatus) => set({ saveStatus }),
+  setBoard: (board) => set({ board, history: emptyHistory(), revision: 0 }),
   commit: (label, recipe) => {
     const { board, history, revision } = get();
     if (!board) return;

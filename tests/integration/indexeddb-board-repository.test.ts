@@ -1,0 +1,19 @@
+import "fake-indexeddb/auto";
+import { beforeEach, describe, expect, it } from "vitest";
+import { deleteDB, openDB } from "idb";
+import { createBoard } from "@/core/board/factory";
+import { IndexedDbBoardRepository } from "@/repositories/indexeddb-board-repository";
+
+beforeEach(async () => { await deleteDB("draftspace"); });
+
+describe("IndexedDbBoardRepository", () => {
+  it("writes and returns valid boards as raw records", async () => {
+    const repository = new IndexedDbBoardRepository(); const board = createBoard(); await repository.create(board);
+    expect(await repository.getRawById(board.id)).toEqual(board);
+  });
+  it("returns corrupt records without parsing or modifying them", async () => {
+    const db = await openDB("draftspace", 1, { upgrade(database) { database.createObjectStore("boards", { keyPath: "id" }).createIndex("by-updated", "updatedAt"); } });
+    const raw = { id: "broken", updatedAt: new Date().toISOString(), unexpected: true }; await db.put("boards", raw); db.close();
+    expect(await new IndexedDbBoardRepository().getRawById("broken")).toEqual(raw);
+  });
+});

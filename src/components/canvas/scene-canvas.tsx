@@ -15,11 +15,10 @@ type Props = {
 
 export function SceneCanvas({ board, viewport, elements, width, height, draftRectangle }: Props) {
   const ref = useRef<HTMLCanvasElement>(null);
+  const dpr = typeof window === "undefined" ? 1 : Math.min(window.devicePixelRatio || 1, 2);
 
   useEffect(() => {
     const canvas = ref.current; if (!canvas || width <= 0 || height <= 0) return;
-    const dpr = Math.min(window.devicePixelRatio || 1, 2);
-    canvas.width = Math.floor(width * dpr); canvas.height = Math.floor(height * dpr);
     const ctx = canvas.getContext("2d"); if (!ctx) return;
     ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
     ctx.clearRect(0, 0, width, height);
@@ -57,7 +56,7 @@ export function SceneCanvas({ board, viewport, elements, width, height, draftRec
       ctx.beginPath(); ctx.roundRect(draftRectangle.x, draftRectangle.y, draftRectangle.width, draftRectangle.height, 10); ctx.fill(); ctx.stroke();
     }
     ctx.restore();
-  }, [board.preferences, draftRectangle, elements, height, viewport, width]);
+  }, [board.preferences, dpr, draftRectangle, elements, height, viewport, width]);
 
-  return <canvas ref={ref} className="scene-canvas" aria-hidden="true" />;
+  return <canvas ref={ref} className="scene-canvas" aria-hidden="true" width={Math.max(1, Math.floor(width * dpr))} height={Math.max(1, Math.floor(height * dpr))} />;
 }

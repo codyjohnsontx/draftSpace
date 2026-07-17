@@ -51,7 +51,27 @@ button { color: inherit; }
 .divider { width: 1px; height: 20px; background: var(--line); margin: 0 5px; }
 .divider.vertical { height: 26px; }
 .save-status { display: flex; align-items: center; gap: 6px; margin-right: 3px; color: var(--muted); font-size: 12px; white-space: nowrap; }
-.save-status.failed { color: #a33d31; }
+.save-status.failed, .save-status.session-only { color: #9a4b35; }
+.persistence-status-wrap { position: relative; }
+.save-status-button { min-height: 30px; padding: 0 8px; border: 0; border-radius: 7px; background: rgba(184,95,63,.08); cursor: pointer; }
+.save-status-button:hover { background: rgba(184,95,63,.14); }
+.save-status-button:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.persistence-panel { position: absolute; z-index: 40; top: 38px; right: 0; width: 300px; padding: 16px; color: var(--ink); background: #fffdf8; border: 1px solid var(--line); border-radius: 12px; box-shadow: var(--shadow); animation: panel-in .16s ease both; }
+.persistence-panel strong { display: block; font-size: 14px; }.persistence-panel p { margin: 6px 0; color: var(--muted); font-size: 12px; line-height: 1.45; }.persistence-panel small { display: block; margin-top: 8px; color: #8a4632; font-size: 11px; }
+.persistence-actions { display: flex; gap: 7px; margin-top: 13px; }.persistence-actions button { display: flex; align-items: center; justify-content: center; gap: 6px; min-height: 32px; padding: 0 10px; border-radius: 7px; cursor: pointer; font-size: 12px; font-weight: 600; }
+.compact-primary { color: #fff; border: 1px solid var(--accent); background: var(--accent); }.compact-secondary { border: 1px solid var(--line); background: transparent; }.compact-primary:hover { background: #9f4f34; }.compact-secondary:hover { background: rgba(51,47,43,.05); }
+
+.recovery-screen { position: relative; display: grid; place-items: center; width: 100vw; min-height: 100svh; padding: 88px 24px 48px; background: var(--canvas); overflow: auto; }
+.recovery-brand { position: absolute; top: 24px; left: 28px; display: flex; align-items: center; gap: 9px; letter-spacing: -.025em; }
+.recovery-content { width: min(100%, 560px); animation: recovery-in .35s cubic-bezier(.2,.8,.2,1) both; }
+.recovery-icon { display: grid; place-items: center; width: 46px; height: 46px; margin-bottom: 22px; color: #8c4934; background: #f0ded4; border-radius: 13px; }
+.eyebrow { margin: 0 0 9px; color: #8c4934; font: 600 11px var(--font-mono), monospace; letter-spacing: .09em; text-transform: uppercase; }
+.recovery-content h1 { margin: 0; font-size: clamp(32px, 5vw, 48px); line-height: 1.02; letter-spacing: -.05em; }
+.recovery-lede { margin: 15px 0 28px; color: var(--muted); font-size: 16px; }
+.recovery-reason { padding: 17px 0; border-top: 1px solid var(--line); border-bottom: 1px solid var(--line); }.recovery-reason > strong { font-size: 14px; }.recovery-reason p { margin: 5px 0 0; color: var(--muted); font-size: 13px; line-height: 1.5; }.recovery-reason ul { margin: 12px 0 0; padding-left: 19px; color: var(--muted); font: 11px/1.6 var(--font-mono), monospace; }
+.recovery-actions { display: flex; flex-wrap: wrap; gap: 9px; margin-top: 24px; }.recovery-actions button { display: flex; align-items: center; justify-content: center; gap: 8px; min-height: 42px; padding: 0 16px; border-radius: 9px; cursor: pointer; font-size: 13px; font-weight: 650; }.recovery-primary { color: #fff; border: 1px solid var(--accent); background: var(--accent); }.recovery-secondary { border: 1px solid var(--line); background: #fffdf8; }.recovery-primary:hover { background: #9f4f34; }.recovery-secondary:hover { background: #f1ede5; }.recovery-actions button:focus-visible { outline: 3px solid rgba(184,95,63,.28); outline-offset: 3px; }
+.recovery-note { margin: 13px 0 0; color: var(--muted); font-size: 11px; }
+.recovery-download-error { margin: 10px 0 0; color: #9a4b35; font-size: 12px; }
 
 .tool-rail {
   position: absolute; z-index: 10; left: 50%; bottom: 20px; transform: translateX(-50%);
@@ -82,6 +102,8 @@ kbd { display: inline-grid; min-width: 21px; height: 21px; place-items: center; 
 @keyframes hint-in { from { opacity: 0; transform: translate(-50%, calc(-50% + 8px)); } }
 @keyframes spin { to { transform: rotate(360deg); } }
 @keyframes snap-in { from { opacity: 0; } }
+@keyframes panel-in { from { opacity: 0; transform: translateY(-4px) scale(.98); } }
+@keyframes recovery-in { from { opacity: 0; transform: translateY(8px); } }
 
 @media (max-width: 720px) {
   .top-bar { left: 8px; right: 8px; top: 8px; }

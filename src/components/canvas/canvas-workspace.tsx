@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useRef, useState, type PointerEvent as ReactPointerEvent } from "react";
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type PointerEvent as ReactPointerEvent } from "react";
 import type { Viewport } from "@/core/board/types";
 import type { Bounds, CanvasElement, Point } from "@/core/elements/types";
 import { containsBounds, containsPoint, creationBounds, normalizeBounds, selectionBounds } from "@/core/geometry/bounds";
@@ -30,10 +30,15 @@ export function CanvasWorkspace() {
   const selectedIds = useSessionStore((s) => s.selectedIds); const activeTool = useSessionStore((s) => s.activeTool); const spaceHeld = useSessionStore((s) => s.spaceHeld);
   const rootRef = useRef<HTMLDivElement>(null); const [gesture, setGesture] = useState<Gesture>(null); const [size, setSize] = useState({ width: 0, height: 0 });
 
-  useEffect(() => {
+  useLayoutEffect(() => {
     const node = rootRef.current; if (!node) return;
-    const observer = new ResizeObserver(([entry]) => setSize({ width: entry.contentRect.width, height: entry.contentRect.height })); observer.observe(node); return () => observer.disconnect();
-  }, []);
+    const updateSize = () => {
+      const bounds = node.getBoundingClientRect();
+      setSize({ width: bounds.width, height: bounds.height });
+    };
+    updateSize();
+    const observer = new ResizeObserver(updateSize); observer.observe(node); return () => observer.disconnect();
+  }, [board?.id]);
 
   const localPoint = useCallback((event: { clientX: number; clientY: number }) => { const rect = rootRef.current!.getBoundingClientRect(); return { x: event.clientX - rect.left, y: event.clientY - rect.top }; }, []);
   const worldPoint = useCallback((event: { clientX: number; clientY: number }) => screenToWorld(localPoint(event), useViewportStore.getState().viewport), [localPoint]);
