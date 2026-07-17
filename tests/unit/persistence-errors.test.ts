@@ -7,4 +7,9 @@ describe("persistence errors", () => {
     expect(isPersistenceError(value)).toBe(false);
     expect(typeof normalizePersistenceError(value).message).toBe("string");
   });
+  it("rejects invalid codes and retryable flags", () => {
+    expect(isPersistenceError({ code: 1, message: "Unsafe", retryable: true })).toBe(false);
+    expect(isPersistenceError({ code: "write-failed", message: "Unsafe", retryable: "yes" })).toBe(false);
+    expect(isPersistenceError({ code: "write-failed", message: "Safe", retryable: true })).toBe(true);
+  });
 });

@@ -41,12 +41,14 @@ export function useBoardPersistence(): PersistenceController {
 
   const startCoordinator = useCallback(() => {
     coordinator.current?.dispose();
-    coordinator.current = new AutosaveCoordinator({
+    const nextCoordinator = new AutosaveCoordinator({
       repository,
       getBoard: () => useBoardStore.getState().board,
       getRevision: () => useBoardStore.getState().revision,
       onStateChange: handleAutosaveEvent,
     });
+    coordinator.current = nextCoordinator;
+    return nextCoordinator;
   }, [handleAutosaveEvent, repository]);
 
   const enterSessionOnly = useCallback((error: unknown) => {
@@ -125,23 +127,25 @@ export function useBoardPersistence(): PersistenceController {
       usePersistenceStore.getState().markSaving(savedRevision);
       const existing = await repository.getRawById(board.id);
       if (existing === null) await repository.create(board); else await repository.update(board);
-      localStorage.setItem(LAST_BOARD, board.id); startCoordinator();
+      localStorage.setItem(LAST_BOARD, board.id); const activeCoordinator = startCoordinator();
       usePersistenceStore.getState().markSaved(savedRevision, new Date().toISOString());
       const latestRevision = useBoardStore.getState().revision;
-      if (latestRevision > savedRevision) coordinator.current?.schedule(latestRevision);
+      if (latestRevision > savedRevision) activeCoordinator.schedule(latestRevision);
     } catch (error) { usePersistenceStore.getState().enterSessionOnly(normalizePersistenceError(error, "write")); }
   }, [repository, startCoordinator]);
 
   const startNewBoard = useCallback(async () => {
+    coordinator.current?.dispose();
+    coordinator.current = null;
     const board = createBoard("My first draft");
     useBoardStore.getState().setBoard(board); useViewportStore.getState().setViewport(board.viewport);
     const savedRevision = useBoardStore.getState().revision;
     usePersistenceStore.getState().clearRecovery(); usePersistenceStore.getState().markSaving(savedRevision);
     try {
-      await repository.create(board); localStorage.setItem(LAST_BOARD, board.id); startCoordinator();
+      await repository.create(board); localStorage.setItem(LAST_BOARD, board.id); const activeCoordinator = startCoordinator();
       usePersistenceStore.getState().markSaved(savedRevision, new Date().toISOString());
       const latestRevision = useBoardStore.getState().revision;
-      if (latestRevision > savedRevision) coordinator.current?.schedule(latestRevision);
+      if (latestRevision > savedRevision) activeCoordinator.schedule(latestRevision);
     }
     catch (error) { enterSessionOnly(error); }
   }, [enterSessionOnly, repository, startCoordinator]);

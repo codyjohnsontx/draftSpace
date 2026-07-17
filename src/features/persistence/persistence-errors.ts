@@ -13,6 +13,15 @@ export type PersistenceError = {
   cause?: unknown;
 };
 
+const PERSISTENCE_ERROR_CODES = new Set<string>([
+  "storage-unavailable",
+  "read-failed",
+  "write-failed",
+  "validation-failed",
+  "unsupported-version",
+  "backup-failed",
+] satisfies PersistenceErrorCode[]);
+
 export function persistenceError(code: PersistenceErrorCode, message: string, retryable: boolean, cause?: unknown): PersistenceError {
   return { code, message, retryable, cause };
 }
@@ -28,5 +37,10 @@ export function normalizePersistenceError(error: unknown, operation: "read" | "w
 }
 
 export function isPersistenceError(value: unknown): value is PersistenceError {
-  return Boolean(value && typeof value === "object" && "code" in value && "message" in value && typeof value.message === "string" && "retryable" in value);
+  return Boolean(
+    value && typeof value === "object"
+    && "code" in value && typeof value.code === "string" && PERSISTENCE_ERROR_CODES.has(value.code)
+    && "message" in value && typeof value.message === "string"
+    && "retryable" in value && typeof value.retryable === "boolean",
+  );
 }
