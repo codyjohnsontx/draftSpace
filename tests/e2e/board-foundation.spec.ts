@@ -43,6 +43,24 @@ test("restores the saved viewport", async ({ page }) => {
   await expect(page.getByRole("button", { name: "Reset zoom to 100%" })).toHaveText(savedZoom ?? "");
 });
 
+test("flushes the viewport when the document becomes hidden", async ({ page }) => {
+  await page.goto("/");
+  await expect(page.getByRole("button", { name: "Reset zoom to 100%" })).toHaveText("100%");
+  await page.keyboard.down("Control"); await page.mouse.move(640, 360); await page.mouse.wheel(0, -240); await page.keyboard.up("Control");
+  await expect(page.getByRole("button", { name: "Reset zoom to 100%" })).not.toHaveText("100%");
+  await page.evaluate(() => {
+    Object.defineProperty(document, "visibilityState", { configurable: true, value: "hidden" });
+    document.dispatchEvent(new Event("visibilitychange"));
+  });
+  await expect.poll(async () => page.evaluate(async () => new Promise<number>((resolve, reject) => {
+    const id = localStorage.getItem("draftspace:last-board"); const request = indexedDB.open("draftspace", 1);
+    request.onerror = () => reject(request.error); request.onsuccess = () => {
+      const db = request.result; const get = db.transaction("boards").objectStore("boards").get(id!);
+      get.onsuccess = () => { db.close(); resolve(get.result?.viewport?.zoom ?? 0); }; get.onerror = () => reject(get.error);
+    };
+  })), { timeout: 500 }).toBeGreaterThan(1);
+});
+
 test("preserves a corrupt board and offers recovery", async ({ page }) => {
   await page.goto("/");
   await expect(page.getByRole("main", { name: "Draftspace infinite canvas" })).toBeVisible();

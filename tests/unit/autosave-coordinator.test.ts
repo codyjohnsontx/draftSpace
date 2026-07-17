@@ -45,4 +45,10 @@ describe("autosave coordinator", () => {
   it("disposal clears scheduled work", async () => {
     vi.useFakeTimers(); const test = setup(); test.coordinator.schedule(1); test.coordinator.dispose(); await vi.advanceTimersByTimeAsync(1000); expect(test.update).not.toHaveBeenCalled();
   });
+  it("drains an active save before completing and cancels later work", async () => {
+    vi.useFakeTimers(); let resolve!: () => void; const update = vi.fn(() => new Promise<void>((done) => { resolve = done; })); const test = setup(update);
+    test.coordinator.schedule(1); await vi.advanceTimersByTimeAsync(500); let drained = false; const drain = test.coordinator.drain().then(() => { drained = true; });
+    await Promise.resolve(); expect(drained).toBe(false); resolve(); await drain; expect(drained).toBe(true);
+    test.setRevision(2); test.coordinator.schedule(2); await vi.advanceTimersByTimeAsync(500); expect(update).toHaveBeenCalledTimes(1);
+  });
 });

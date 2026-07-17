@@ -29,6 +29,7 @@ export type PersistenceController = {
 export function useBoardPersistence(): PersistenceController {
   const [repository] = useState(() => new IndexedDbBoardRepository());
   const coordinator = useRef<AutosaveCoordinator | null>(null);
+  const viewportTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const initialized = useRef(false);
   const revision = useBoardStore((state) => state.revision);
 
@@ -39,8 +40,14 @@ export function useBoardPersistence(): PersistenceController {
     else state.markFailed(event.error);
   }, []);
 
-  const startCoordinator = useCallback(() => {
-    coordinator.current?.dispose();
+  const drainCoordinator = useCallback(async () => {
+    const current = coordinator.current;
+    coordinator.current = null;
+    await current?.drain();
+  }, []);
+
+  const startCoordinator = useCallback(async () => {
+    await drainCoordinator();
     const nextCoordinator = new AutosaveCoordinator({
       repository,
       getBoard: () => useBoardStore.getState().board,
@@ -49,7 +56,13 @@ export function useBoardPersistence(): PersistenceController {
     });
     coordinator.current = nextCoordinator;
     return nextCoordinator;
-  }, [handleAutosaveEvent, repository]);
+  }, [drainCoordinator, handleAutosaveEvent, repository]);
+
+  const flushViewport = useCallback(() => {
+    if (viewportTimer.current !== null) clearTimeout(viewportTimer.current);
+    viewportTimer.current = null;
+    useBoardStore.getState().persistViewport(useViewportStore.getState().viewport);
+  }, []);
 
   const enterSessionOnly = useCallback((error: unknown) => {
     const board = useBoardStore.getState().board ?? createBoard("Temporary draft");
@@ -69,14 +82,14 @@ export function useBoardPersistence(): PersistenceController {
           const board = createBoard("My first draft");
           await repository.create(board); localStorage.setItem(LAST_BOARD, board.id);
           useBoardStore.getState().setBoard(board); useViewportStore.getState().setViewport(board.viewport);
-          startCoordinator(); persistence.markSaved(0, new Date().toISOString()); return;
+          await startCoordinator(); persistence.markSaved(0, new Date().toISOString()); return;
         }
         const result = loadBoardDocument(id, await repository.getRawById(id));
         if (result.kind === "missing") {
           const board = createBoard("My first draft");
           await repository.create(board); localStorage.setItem(LAST_BOARD, board.id);
           useBoardStore.getState().setBoard(board); useViewportStore.getState().setViewport(board.viewport);
-          startCoordinator(); persistence.markSaved(0, new Date().toISOString()); return;
+          await startCoordinator(); persistence.markSaved(0, new Date().toISOString()); return;
         }
         if (result.kind === "invalid") {
           persistence.requireRecovery({ boardId: result.boardId, raw: result.raw, detectedAt: new Date().toISOString(), reason: "invalid", issues: result.issues }); return;
@@ -86,7 +99,7 @@ export function useBoardPersistence(): PersistenceController {
         }
         useBoardStore.getState().setBoard(result.board);
         useViewportStore.getState().setViewport(result.board.preferences.restoreViewport ? result.board.viewport : { x: 0, y: 0, zoom: 1 });
-        startCoordinator(); persistence.markSaved(0, new Date().toISOString());
+        await startCoordinator(); persistence.markSaved(0, new Date().toISOString());
       } catch (error) { console.error("Draftspace could not initialize local persistence", error); enterSessionOnly(error); }
     })();
   }, [enterSessionOnly, repository, startCoordinator]);
@@ -99,56 +112,56 @@ export function useBoardPersistence(): PersistenceController {
   }, [revision]);
 
   useEffect(() => {
-    let timeout = 0;
     const unsubscribe = useViewportStore.subscribe((state, previous) => {
       if (state.viewport === previous.viewport) return;
-      window.clearTimeout(timeout);
-      timeout = window.setTimeout(() => useBoardStore.getState().persistViewport(useViewportStore.getState().viewport), 350);
+      if (viewportTimer.current !== null) clearTimeout(viewportTimer.current);
+      viewportTimer.current = setTimeout(flushViewport, 350);
     });
-    return () => { window.clearTimeout(timeout); unsubscribe(); };
-  }, []);
+    return () => { if (viewportTimer.current !== null) clearTimeout(viewportTimer.current); unsubscribe(); };
+  }, [flushViewport]);
 
   useEffect(() => {
-    const visibility = () => { if (document.visibilityState === "hidden") void coordinator.current?.flush("visibility"); };
-    const pagehide = () => { void coordinator.current?.flush("pagehide"); };
+    const visibility = () => { if (document.visibilityState === "hidden") { flushViewport(); void coordinator.current?.flush("visibility"); } };
+    const pagehide = () => { flushViewport(); void coordinator.current?.flush("pagehide"); };
     const online = () => usePersistenceStore.getState().setNetworkOnline(true);
     const offline = () => usePersistenceStore.getState().setNetworkOnline(false);
     document.addEventListener("visibilitychange", visibility); window.addEventListener("pagehide", pagehide);
     window.addEventListener("online", online); window.addEventListener("offline", offline);
     return () => { document.removeEventListener("visibilitychange", visibility); window.removeEventListener("pagehide", pagehide); window.removeEventListener("online", online); window.removeEventListener("offline", offline); };
-  }, []);
+  }, [flushViewport]);
 
   const retrySave = useCallback(async () => { await coordinator.current?.retry(); }, []);
 
   const retryStorage = useCallback(async () => {
-    const board = useBoardStore.getState().board; if (!board) return;
-    const savedRevision = useBoardStore.getState().revision;
     try {
+      await drainCoordinator();
+      const board = useBoardStore.getState().board; if (!board) return;
+      const savedRevision = useBoardStore.getState().revision;
       usePersistenceStore.getState().markSaving(savedRevision);
       const existing = await repository.getRawById(board.id);
       if (existing === null) await repository.create(board); else await repository.update(board);
-      localStorage.setItem(LAST_BOARD, board.id); const activeCoordinator = startCoordinator();
+      localStorage.setItem(LAST_BOARD, board.id); const activeCoordinator = await startCoordinator();
       usePersistenceStore.getState().markSaved(savedRevision, new Date().toISOString());
       const latestRevision = useBoardStore.getState().revision;
       if (latestRevision > savedRevision) activeCoordinator.schedule(latestRevision);
     } catch (error) { usePersistenceStore.getState().enterSessionOnly(normalizePersistenceError(error, "write")); }
-  }, [repository, startCoordinator]);
+  }, [drainCoordinator, repository, startCoordinator]);
 
   const startNewBoard = useCallback(async () => {
-    coordinator.current?.dispose();
-    coordinator.current = null;
+    await drainCoordinator();
     const board = createBoard("My first draft");
     useBoardStore.getState().setBoard(board); useViewportStore.getState().setViewport(board.viewport);
     const savedRevision = useBoardStore.getState().revision;
-    usePersistenceStore.getState().clearRecovery(); usePersistenceStore.getState().markSaving(savedRevision);
+    usePersistenceStore.getState().markSaving(savedRevision);
     try {
-      await repository.create(board); localStorage.setItem(LAST_BOARD, board.id); const activeCoordinator = startCoordinator();
+      await repository.create(board); localStorage.setItem(LAST_BOARD, board.id); const activeCoordinator = await startCoordinator();
       usePersistenceStore.getState().markSaved(savedRevision, new Date().toISOString());
       const latestRevision = useBoardStore.getState().revision;
       if (latestRevision > savedRevision) activeCoordinator.schedule(latestRevision);
+      usePersistenceStore.getState().clearRecovery();
     }
-    catch (error) { enterSessionOnly(error); }
-  }, [enterSessionOnly, repository, startCoordinator]);
+    catch (error) { enterSessionOnly(normalizePersistenceError(error, "write")); }
+  }, [drainCoordinator, enterSessionOnly, repository, startCoordinator]);
 
   const downloadRecovery = useCallback(async () => {
     const recovery = usePersistenceStore.getState().recovery; if (!recovery) return;

@@ -78,6 +78,13 @@ export class AutosaveCoordinator {
     await this.flush("manual");
   }
 
+  async drain() {
+    this.dispose();
+    if (this.activeSave) await this.activeSave;
+    this.clearTimer("retry");
+    this.activeSave = null;
+  }
+
   dispose() { this.disposed = true; this.clearTimer("debounce"); this.clearTimer("retry"); }
 
   private clearTimer(kind: "debounce" | "retry") {
