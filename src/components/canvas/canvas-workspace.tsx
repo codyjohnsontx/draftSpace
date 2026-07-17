@@ -6,6 +6,8 @@ import type { Bounds, CanvasElement, Point } from "@/core/elements/types";
 import { containsBounds, containsPoint, creationBounds, normalizeBounds, selectionBounds } from "@/core/geometry/bounds";
 import { screenToWorld } from "@/core/geometry/coordinates";
 import { resizedBounds, scaleElements } from "@/core/geometry/resize";
+import { snapBoundsToGrid, snappedMoveDelta } from "@/core/geometry/snapping";
+import { classifyWheelGesture } from "@/core/interaction/wheel";
 import { copyElements, readElements } from "@/features/clipboard/clipboard";
 import { useBoardStore } from "@/stores/board-store";
 import { useSessionStore, type ResizeHandle } from "@/stores/session-store";
@@ -20,7 +22,7 @@ type Gesture =
   | { type: "draw"; pointerId: number; origin: Point; current: Point; square: boolean; fromCenter: boolean }
   | { type: "marquee"; pointerId: number; origin: Point; current: Point; additive: boolean }
   | { type: "move"; pointerId: number; origin: Point; current: Point; initial: CanvasElement[] }
-  | { type: "resize"; pointerId: number; origin: Point; current: Point; handle: ResizeHandle; initialBounds: Bounds; initial: CanvasElement[] }
+  | { type: "resize"; pointerId: number; origin: Point; current: Point; handle: ResizeHandle; initialBounds: Bounds; initial: CanvasElement[]; preserveAspect: boolean; fromCenter: boolean }
   | null;
 
 export function CanvasWorkspace() {
@@ -36,20 +38,26 @@ export function CanvasWorkspace() {
   const localPoint = useCallback((event: { clientX: number; clientY: number }) => { const rect = rootRef.current!.getBoundingClientRect(); return { x: event.clientX - rect.left, y: event.clientY - rect.top }; }, []);
   const worldPoint = useCallback((event: { clientX: number; clientY: number }) => screenToWorld(localPoint(event), useViewportStore.getState().viewport), [localPoint]);
   const ordered = useMemo(() => board ? board.elementIds.map((id) => board.elements[id]).filter(Boolean) : [], [board]);
+  const moveDelta = useCallback((current: Extract<NonNullable<Gesture>, { type: "move" }>) => {
+    const delta = { x: current.current.x - current.origin.x, y: current.current.y - current.origin.y };
+    return board?.preferences.snapToGrid && current.initial[0] ? snappedMoveDelta(current.initial[0], delta, board.preferences.gridSize) : delta;
+  }, [board]);
 
   const displayed = useMemo(() => {
     const current = gesture; if (!current || (current.type !== "move" && current.type !== "resize")) return ordered;
     let changed: CanvasElement[];
-    if (current.type === "move") { const dx = current.current.x - current.origin.x, dy = current.current.y - current.origin.y; changed = current.initial.map((e) => ({ ...e, x: e.x + dx, y: e.y + dy })); }
-    else { const next = resizedBounds(current.initialBounds, current.handle, { x: current.current.x - current.origin.x, y: current.current.y - current.origin.y }); changed = scaleElements(current.initial, current.initialBounds, next); }
+    if (current.type === "move") { const { x: dx, y: dy } = moveDelta(current); changed = current.initial.map((e) => ({ ...e, x: e.x + dx, y: e.y + dy })); }
+    else { const next = resizedBounds(current.initialBounds, current.handle, { x: current.current.x - current.origin.x, y: current.current.y - current.origin.y }, { preserveAspect: current.preserveAspect, fromCenter: current.fromCenter }); changed = scaleElements(current.initial, current.initialBounds, next); }
     const map = new Map(changed.map((e) => [e.id, e])); return ordered.map((e) => map.get(e.id) ?? e);
-  }, [ordered, gesture]);
+  }, [ordered, gesture, moveDelta]);
 
   const selectedElements = displayed.filter((e) => selectedIds.includes(e.id));
   const selectedBounds = selectionBounds(selectedElements);
   const current = gesture;
-  const draft = current?.type === "draw" ? creationBounds(current.origin, current.current, current.square, current.fromCenter) : null;
+  const rawDraft = current?.type === "draw" ? creationBounds(current.origin, current.current, current.square, current.fromCenter) : null;
+  const draft = rawDraft && board?.preferences.snapToGrid ? snapBoundsToGrid(rawDraft, board.preferences.gridSize) : rawDraft;
   const marquee = current?.type === "marquee" ? normalizeBounds(current.origin, current.current) : null;
+  const snapPreview = board?.preferences.snapToGrid && (current?.type === "draw" || current?.type === "move") ? (current.type === "draw" ? draft : selectedBounds) : null;
 
   const hitElement = (point: Point) => [...ordered].reverse().find((e) => !e.hidden && !e.locked && containsPoint(e, point, 6 / viewport.zoom));
 
@@ -59,7 +67,7 @@ export function CanvasWorkspace() {
     const handle = target.dataset.resizeHandle as ResizeHandle | undefined;
     rootRef.current?.setPointerCapture(event.pointerId);
     if (event.button === 1 || activeTool === "hand" || spaceHeld) setGesture({ type: "pan", pointerId: event.pointerId, start: screen, viewport });
-    else if (handle && selectedBounds) setGesture({ type: "resize", pointerId: event.pointerId, origin: world, current: world, handle, initialBounds: selectedBounds, initial: selectedElements });
+    else if (handle && selectedBounds) setGesture({ type: "resize", pointerId: event.pointerId, origin: world, current: world, handle, initialBounds: selectedBounds, initial: selectedElements, preserveAspect: event.shiftKey, fromCenter: event.altKey });
     else if (activeTool === "rectangle") setGesture({ type: "draw", pointerId: event.pointerId, origin: world, current: world, square: event.shiftKey, fromCenter: event.altKey });
     else {
       const hit = hitElement(world);
@@ -76,6 +84,7 @@ export function CanvasWorkspace() {
     if (current.type === "pan") {
       const p = localPoint(event); useViewportStore.getState().setViewport({ ...current.viewport, x: current.viewport.x + p.x - current.start.x, y: current.viewport.y + p.y - current.start.y });
     } else if (current.type === "draw") setGesture({ ...current, current: worldPoint(event), square: event.shiftKey, fromCenter: event.altKey });
+    else if (current.type === "resize") setGesture({ ...current, current: worldPoint(event), preserveAspect: event.shiftKey, fromCenter: event.altKey });
     else setGesture({ ...current, current: worldPoint(event) });
   };
 
@@ -85,17 +94,16 @@ export function CanvasWorkspace() {
     if (current.type === "draw") {
       let bounds = creationBounds(current.origin, current.current, current.square, current.fromCenter);
       if (bounds.width < 4 && bounds.height < 4) bounds = { x: current.origin.x, y: current.origin.y, width: 160, height: 100 };
-      if (board.preferences.snapToGrid) { const grid = board.preferences.gridSize; bounds = { x: Math.round(bounds.x / grid) * grid, y: Math.round(bounds.y / grid) * grid, width: Math.max(16, Math.round(bounds.width / grid) * grid), height: Math.max(16, Math.round(bounds.height / grid) * grid) }; }
+      if (board.preferences.snapToGrid) bounds = snapBoundsToGrid(bounds, board.preferences.gridSize);
       if (bounds.width >= 16 && bounds.height >= 16) { const id = useBoardStore.getState().createRectangle(bounds); if (id) useSessionStore.getState().setSelected([id]); useSessionStore.getState().setTool("select"); }
     } else if (current.type === "marquee") {
       const bounds = normalizeBounds(current.origin, current.current); const found = ordered.filter((e) => !e.hidden && !e.locked && containsBounds(bounds, e)).map((e) => e.id);
       useSessionStore.getState().setSelected(current.additive ? [...new Set([...selectedIds, ...found])] : found);
     } else if (current.type === "move") {
-      let dx = current.current.x - current.origin.x, dy = current.current.y - current.origin.y;
-      if (board.preferences.snapToGrid && current.initial[0]) { const grid = board.preferences.gridSize; dx = Math.round((current.initial[0].x + dx) / grid) * grid - current.initial[0].x; dy = Math.round((current.initial[0].y + dy) / grid) * grid - current.initial[0].y; }
+      const { x: dx, y: dy } = moveDelta(current);
       if (dx || dy) useBoardStore.getState().commit("Move selection", (draftBoard) => current.initial.forEach((e) => { const item = draftBoard.elements[e.id]; item.x = e.x + dx; item.y = e.y + dy; }));
     } else if (current.type === "resize") {
-      const next = resizedBounds(current.initialBounds, current.handle, { x: current.current.x - current.origin.x, y: current.current.y - current.origin.y }); const scaled = scaleElements(current.initial, current.initialBounds, next);
+      const next = resizedBounds(current.initialBounds, current.handle, { x: current.current.x - current.origin.x, y: current.current.y - current.origin.y }, { preserveAspect: current.preserveAspect, fromCenter: current.fromCenter }); const scaled = scaleElements(current.initial, current.initialBounds, next);
       useBoardStore.getState().commit("Resize selection", (draftBoard) => scaled.forEach((e) => { const item = draftBoard.elements[e.id]; Object.assign(item, { x: e.x, y: e.y, width: e.width, height: e.height }); }));
     }
   };
@@ -109,7 +117,10 @@ export function CanvasWorkspace() {
       if (!mod && key === "v") useSessionStore.getState().setTool("select");
       else if (!mod && key === "h") useSessionStore.getState().setTool("hand");
       else if (!mod && key === "r") useSessionStore.getState().setTool("rectangle");
-      else if (event.key === "Escape") { setGesture(null); useSessionStore.getState().setSelected([]); useSessionStore.getState().setTool("select"); }
+      else if (event.key === "Escape") {
+        if (gesture) { setGesture(null); if (gesture.type === "draw") useSessionStore.getState().setTool("select"); }
+        else { useSessionStore.getState().setSelected([]); useSessionStore.getState().setTool("select"); }
+      }
       else if (mod && key === "z") { event.preventDefault(); if (event.shiftKey) useBoardStore.getState().redo(); else useBoardStore.getState().undo(); }
       else if (mod && key === "y") { event.preventDefault(); useBoardStore.getState().redo(); }
       else if ((event.key === "Delete" || event.key === "Backspace") && selectedIds.length) { event.preventDefault(); useBoardStore.getState().deleteElements(selectedIds); useSessionStore.getState().setSelected([]); }
@@ -125,13 +136,18 @@ export function CanvasWorkspace() {
     };
     const up = (event: KeyboardEvent) => { if (event.code === "Space") useSessionStore.getState().setSpaceHeld(false); };
     window.addEventListener("keydown", down); window.addEventListener("keyup", up); return () => { window.removeEventListener("keydown", down); window.removeEventListener("keyup", up); };
-  }, [ordered, selectedIds]);
+  }, [gesture, ordered, selectedIds]);
+
+  useEffect(() => {
+    const cancel = () => setGesture(null);
+    window.addEventListener("blur", cancel); return () => window.removeEventListener("blur", cancel);
+  }, []);
 
   if (!board) return <div className="loading-canvas"><span /><p>Opening your draft…</p></div>;
   const cursor = spaceHeld || activeTool === "hand" ? "grab" : activeTool === "rectangle" ? "crosshair" : "default";
-  return <main ref={rootRef} className="canvas-workspace" aria-label="Draftspace infinite canvas" data-tool={activeTool} style={{ cursor }} onPointerDown={onPointerDown} onPointerMove={onPointerMove} onPointerUp={finishGesture} onPointerCancel={finishGesture} onWheel={(event) => { event.preventDefault(); const p = localPoint(event); if (event.ctrlKey || Math.abs(event.deltaY) > Math.abs(event.deltaX)) useViewportStore.getState().zoomAt(p, viewport.zoom * Math.exp(-event.deltaY * .0015)); else useViewportStore.getState().panBy({ x: -event.deltaX, y: -event.deltaY }); }}>
+  return <main ref={rootRef} className="canvas-workspace" aria-label="Draftspace infinite canvas" data-tool={activeTool} style={{ cursor }} onPointerDown={onPointerDown} onPointerMove={onPointerMove} onPointerUp={finishGesture} onPointerCancel={() => setGesture(null)} onWheel={(event) => { event.preventDefault(); const p = localPoint(event); if (classifyWheelGesture(event) === "zoom") useViewportStore.getState().zoomAt(p, viewport.zoom * Math.exp(-event.deltaY * .0015)); else useViewportStore.getState().panBy({ x: -event.deltaX, y: -event.deltaY }); }}>
     <SceneCanvas board={board} viewport={viewport} elements={displayed} width={size.width} height={size.height} draftRectangle={draft} />
-    <InteractionOverlay bounds={selectedBounds} marquee={marquee} viewport={viewport} />
+    <InteractionOverlay bounds={selectedBounds} marquee={marquee} snapBounds={snapPreview} viewport={viewport} />
     {!board.elementIds.length && !draft && <div className="empty-hint"><p>Start with a rectangle</p><span>Press <kbd>R</kbd>, then drag anywhere</span></div>}
     <ToolRail /><ViewportControls size={size} />
   </main>;

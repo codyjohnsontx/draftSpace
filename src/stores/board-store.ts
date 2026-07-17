@@ -1,6 +1,7 @@
 import { create } from "zustand";
 import type { BoardDocument } from "@/core/board/types";
 import type { Bounds, CanvasElement } from "@/core/elements/types";
+import type { Viewport } from "@/core/board/types";
 import { createBoard, createRectangle, newId, now } from "@/core/board/factory";
 import { emptyHistory, pushHistory, redoBoard, transact, undoBoard, type HistoryState } from "@/features/history/history";
 
@@ -19,6 +20,7 @@ type BoardStore = {
   duplicateElements: (ids: string[]) => string[];
   pasteElements: (elements: CanvasElement[]) => string[];
   rename: (name: string) => void;
+  persistViewport: (viewport: Viewport) => void;
   undo: () => void;
   redo: () => void;
 };
@@ -57,6 +59,12 @@ export const useBoardStore = create<BoardStore>((set, get) => ({
     return copies.map((copy) => copy.id);
   },
   rename: (name) => get().commit("Rename board", (board) => { board.name = name.trim() || "Untitled board"; }),
+  persistViewport: (viewport) => {
+    const { board, revision } = get();
+    if (!board || !board.preferences.restoreViewport) return;
+    if (board.viewport.x === viewport.x && board.viewport.y === viewport.y && board.viewport.zoom === viewport.zoom) return;
+    set({ board: { ...board, viewport, updatedAt: now() }, revision: revision + 1 });
+  },
   undo: () => { const { board, history, revision } = get(); if (!board) return; const result = undoBoard(board, history); set({ ...result, revision: result.board === board ? revision : revision + 1 }); },
   redo: () => { const { board, history, revision } = get(); if (!board) return; const result = redoBoard(board, history); set({ ...result, revision: result.board === board ? revision : revision + 1 }); },
 }));
