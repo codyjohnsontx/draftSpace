@@ -32,19 +32,29 @@ This roadmap favors interaction trust over feature count. Draftspace should earn
 
 **Acceptance:** Given an active gesture, when it is canceled, then document state and history remain unchanged. Given a saved viewport, when the board reloads, then the same world position and zoom are restored. Given grid snapping, when an object is created or moved, then its preview and committed result agree.
 
-## Phase 1.2 — Reliability and performance
+## Phase 1.2A — Save lifecycle and recovery
+
+**Goal:** Make local work recoverable under validation and storage failures.
+
+- Lifecycle-aware save flushing
+- Bounded automatic retries and manual retry controls
+- Corrupt-data recovery without overwriting raw records
+- Session-only mode when IndexedDB is unavailable
+- Emergency board and raw recovery downloads
+- Clear online, offline, saving, failed, and temporary states
+
+**Acceptance:** Failed saves preserve in-memory work and can be retried. Corrupt records remain untouched and downloadable. The canvas remains usable with a clear warning when durable storage is unavailable.
+
+## Phase 1.2B — Performance and browser resilience
 
 **Goal:** Make local work resilient under storage failures and large boards.
 
-- Flush pending saves on visibility changes
-- Save retry control and actionable error messages
-- Corrupt-data recovery without overwriting raw records
 - Browser capability fallbacks
 - 100/500/1,000-element benchmark fixtures
 - Render, hit-test, save, and interaction-latency instrumentation
 - Broader browser smoke coverage
 
-**Acceptance:** Failed saves preserve in-memory work and can be retried. Corrupt records remain recoverable. The 1,000-element fixture remains usable and reports benchmark data.
+**Acceptance:** The 1,000-element fixture remains usable and reports benchmark data. Missing non-storage browser capabilities fail with actionable fallbacks, and supported evergreen browsers pass smoke coverage.
 
 ## Phase 2.1 — Core shapes and styling
 
