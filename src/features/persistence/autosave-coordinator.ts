@@ -42,11 +42,15 @@ export class AutosaveCoordinator {
   }
 
   async flush(reason: FlushReason): Promise<void> {
-    void reason;
     if (this.disposed) return;
     this.clearTimer("debounce");
-    this.clearTimer("retry");
-    if (this.activeSave) return this.activeSave;
+    if (this.retryTimer) return;
+    if (this.activeSave) {
+      await this.activeSave;
+      if (this.disposed || this.retryTimer) return;
+      if (this.pendingRevision !== null) await this.flush(reason);
+      return;
+    }
     const board = this.options.getBoard(); if (!board) return;
     const revision = this.options.getRevision();
     this.pendingRevision = null;
@@ -59,7 +63,7 @@ export class AutosaveCoordinator {
       const error = normalizePersistenceError(cause, "write");
       if (this.retryIndex < this.retryDelays.length) {
         const delay = this.retryDelays[this.retryIndex++];
-        this.retryTimer = setTimeout(() => { this.activeSave = null; void this.flush("manual"); }, delay);
+        this.retryTimer = setTimeout(() => { this.retryTimer = null; this.activeSave = null; void this.flush("manual"); }, delay);
       } else this.options.onStateChange({ type: "failed", error });
     }).finally(() => {
       if (!this.retryTimer) this.activeSave = null;

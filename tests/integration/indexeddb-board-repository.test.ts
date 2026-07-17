@@ -16,4 +16,9 @@ describe("IndexedDbBoardRepository", () => {
     const raw = { id: "broken", updatedAt: new Date().toISOString(), unexpected: true }; await db.put("boards", raw); db.close();
     expect(await new IndexedDbBoardRepository().getRawById("broken")).toEqual(raw);
   });
+  it("skips corrupt records when listing valid board summaries", async () => {
+    const repository = new IndexedDbBoardRepository(); const board = createBoard("Valid board"); await repository.create(board);
+    const db = await openDB("draftspace", 1); await db.put("boards", { id: "broken", updatedAt: new Date().toISOString(), unexpected: true }); db.close();
+    expect(await repository.list()).toEqual([{ id: board.id, name: board.name, createdAt: board.createdAt, updatedAt: board.updatedAt, elementCount: 0 }]);
+  });
 });

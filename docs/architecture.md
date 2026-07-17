@@ -16,7 +16,7 @@ Meaningful operations generate Immer forward and inverse patches. The history ma
 
 `BoardRepository` separates domain logic from IndexedDB and returns raw records on reads so invalid data can be preserved. The loader identifies the file format and version, runs the migration entrypoint, and validates through Zod before a document may enter board state. Invalid or future-version records remain untouched and enter the recovery flow instead.
 
-Autosave is coordinated outside React with a 500 ms debounce, revision-aware stale-write protection, bounded retries, and lifecycle flushing. Persistence status lives in session state rather than board history. A small localStorage key records only the last-opened board ID. When IndexedDB is unavailable, Draftspace uses an explicitly labeled in-memory session and offers an emergency JSON backup.
+Autosave is coordinated outside React with a 500 ms debounce, revision-aware stale-write protection, bounded retries, and lifecycle flushing. The dedicated Zustand persistence store owns persistence status rather than board history. A small localStorage key records only the last-opened board ID. When IndexedDB is unavailable, Draftspace uses an explicitly labeled in-memory session and offers an emergency JSON backup.
 
 ## Schema evolution
 

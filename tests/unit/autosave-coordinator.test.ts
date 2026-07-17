@@ -22,10 +22,16 @@ describe("autosave coordinator", () => {
     expect(test.update).toHaveBeenCalledTimes(1); await vi.advanceTimersByTimeAsync(500); expect(test.update).toHaveBeenCalledTimes(1);
   });
   it("schedules a follow-up save when a newer revision arrives", async () => {
-    vi.useFakeTimers(); let resolve!: () => void; const update = vi.fn(() => new Promise<void>((done) => { resolve = done; })); const test = setup(update);
-    test.coordinator.schedule(1); await vi.advanceTimersByTimeAsync(500); test.setRevision(2); test.coordinator.schedule(2); resolve(); await Promise.resolve(); await Promise.resolve();
+    vi.useFakeTimers(); let resolve!: () => void; const update = vi.fn().mockImplementationOnce(() => new Promise<void>((done) => { resolve = done; })).mockResolvedValue(undefined); const test = setup(update);
+    test.coordinator.schedule(1); await vi.advanceTimersByTimeAsync(500); test.setRevision(2); test.coordinator.schedule(2); const flushed = test.coordinator.flush("pagehide"); resolve(); await flushed;
     expect(test.events.some((event) => event.type === "saved" && event.revision === 1)).toBe(false);
-    await vi.advanceTimersByTimeAsync(500); expect(update).toHaveBeenCalledTimes(2);
+    expect(update).toHaveBeenCalledTimes(2);
+  });
+  it("preserves retry backoff when a lifecycle flush occurs", async () => {
+    vi.useFakeTimers(); const update = vi.fn().mockRejectedValueOnce(new Error("nope")).mockResolvedValue(undefined); const test = setup(update);
+    await test.coordinator.flush("manual"); await test.coordinator.flush("pagehide");
+    await vi.advanceTimersByTimeAsync(999); expect(update).toHaveBeenCalledTimes(1);
+    await vi.advanceTimersByTimeAsync(1); expect(update).toHaveBeenCalledTimes(2);
   });
   it("retries three times before exposing failure", async () => {
     vi.useFakeTimers(); const update = vi.fn(async () => { throw new Error("nope"); }); const test = setup(update);

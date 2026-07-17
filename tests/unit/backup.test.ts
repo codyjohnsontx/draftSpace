@@ -1,6 +1,8 @@
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { createBoard } from "@/core/board/factory";
-import { serializeBoardBackup, serializeRecoveryBackup } from "@/features/persistence/backup";
+import { downloadBackup, serializeBoardBackup, serializeRecoveryBackup } from "@/features/persistence/backup";
+
+afterEach(() => { vi.useRealTimers(); vi.restoreAllMocks(); vi.unstubAllGlobals(); });
 
 describe("persistence backups", () => {
   it("serializes a portable board without mutation", () => {
@@ -17,5 +19,18 @@ describe("persistence backups", () => {
     const raw: Record<string, unknown> = {}; raw.self = raw;
     const result = serializeRecoveryBackup({ boardId: "bad", raw, detectedAt: new Date().toISOString(), reason: "invalid", issues: [] });
     expect(result.ok).toBe(false); if (!result.ok) expect(result.error.code).toBe("backup-failed");
+  });
+  it("reports browser download failures", () => {
+    const createObjectURL = vi.fn(() => { throw new Error("blocked"); });
+    vi.stubGlobal("URL", { createObjectURL, revokeObjectURL: vi.fn() });
+    const backup = serializeBoardBackup(createBoard()); expect(backup.ok).toBe(true);
+    if (backup.ok) { const result = downloadBackup(backup); expect(result.ok).toBe(false); if (!result.ok) expect(result.error.code).toBe("backup-failed"); }
+  });
+  it("revokes successful download URLs", () => {
+    vi.useFakeTimers(); const revokeObjectURL = vi.fn(); const click = vi.spyOn(HTMLAnchorElement.prototype, "click").mockImplementation(() => {});
+    vi.stubGlobal("URL", { createObjectURL: vi.fn(() => "blob:backup"), revokeObjectURL });
+    const backup = serializeBoardBackup(createBoard()); expect(backup.ok).toBe(true);
+    if (backup.ok) expect(downloadBackup(backup).ok).toBe(true);
+    expect(click).toHaveBeenCalledOnce(); vi.runAllTimers(); expect(revokeObjectURL).toHaveBeenCalledWith("blob:backup");
   });
 });

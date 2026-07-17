@@ -3,6 +3,7 @@ import type { RecoveryPayload } from "@/stores/persistence-store";
 import { persistenceError, type PersistenceError } from "./persistence-errors";
 
 export type BackupResult = { ok: true; json: string; filename: string } | { ok: false; error: PersistenceError };
+export type BackupDownloadResult = { ok: true } | { ok: false; error: PersistenceError };
 
 const stamp = () => new Date().toISOString().replace(/[:.]/g, "-");
 const safeName = (name: string) => name.trim().toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "").slice(0, 60) || "board";
@@ -19,8 +20,16 @@ export function serializeRecoveryBackup(recovery: RecoveryPayload): BackupResult
   } catch (error) { return { ok: false, error: persistenceError("backup-failed", "Draftspace could not serialize the recovery data.", false, error) }; }
 }
 
-export function downloadBackup(result: Extract<BackupResult, { ok: true }>) {
-  const url = URL.createObjectURL(new Blob([result.json], { type: "application/json" }));
-  const anchor = document.createElement("a"); anchor.href = url; anchor.download = result.filename; anchor.click();
-  window.setTimeout(() => URL.revokeObjectURL(url), 0);
+export function downloadBackup(result: Extract<BackupResult, { ok: true }>): BackupDownloadResult {
+  let url: string | null = null;
+  try {
+    url = URL.createObjectURL(new Blob([result.json], { type: "application/json" }));
+    const anchor = document.createElement("a"); anchor.href = url; anchor.download = result.filename; anchor.click();
+    const objectUrl = url;
+    window.setTimeout(() => URL.revokeObjectURL(objectUrl), 0);
+    return { ok: true };
+  } catch (error) {
+    if (url) URL.revokeObjectURL(url);
+    return { ok: false, error: persistenceError("backup-failed", "Draftspace could not download the backup file.", false, error) };
+  }
 }

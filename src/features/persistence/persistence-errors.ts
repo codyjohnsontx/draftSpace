@@ -28,5 +28,5 @@ export function normalizePersistenceError(error: unknown, operation: "read" | "w
 }
 
 export function isPersistenceError(value: unknown): value is PersistenceError {
-  return Boolean(value && typeof value === "object" && "code" in value && "message" in value && "retryable" in value);
+  return Boolean(value && typeof value === "object" && "code" in value && "message" in value && typeof value.message === "string" && "retryable" in value);
 }

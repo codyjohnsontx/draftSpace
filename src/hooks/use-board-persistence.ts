@@ -7,10 +7,16 @@ import { IndexedDbBoardRepository } from "@/repositories/indexeddb-board-reposit
 import { useViewportStore } from "@/stores/viewport-store";
 import { AutosaveCoordinator, type AutosaveEvent } from "@/features/persistence/autosave-coordinator";
 import { loadBoardDocument } from "@/features/persistence/load-board-document";
-import { downloadBackup, serializeBoardBackup, serializeRecoveryBackup } from "@/features/persistence/backup";
+import { downloadBackup, serializeBoardBackup, serializeRecoveryBackup, type BackupResult } from "@/features/persistence/backup";
 import { normalizePersistenceError } from "@/features/persistence/persistence-errors";
 
 const LAST_BOARD = "draftspace:last-board";
+
+const finishBackup = (result: BackupResult) => {
+  if (!result.ok) { usePersistenceStore.getState().setError(result.error); return; }
+  const download = downloadBackup(result);
+  if (!download.ok) usePersistenceStore.getState().setError(download.error);
+};
 
 export type PersistenceController = {
   retrySave: () => Promise<void>;
@@ -114,34 +120,40 @@ export function useBoardPersistence(): PersistenceController {
 
   const retryStorage = useCallback(async () => {
     const board = useBoardStore.getState().board; if (!board) return;
+    const savedRevision = useBoardStore.getState().revision;
     try {
-      usePersistenceStore.getState().markSaving(useBoardStore.getState().revision);
+      usePersistenceStore.getState().markSaving(savedRevision);
       const existing = await repository.getRawById(board.id);
       if (existing === null) await repository.create(board); else await repository.update(board);
       localStorage.setItem(LAST_BOARD, board.id); startCoordinator();
-      usePersistenceStore.getState().markSaved(useBoardStore.getState().revision, new Date().toISOString());
+      usePersistenceStore.getState().markSaved(savedRevision, new Date().toISOString());
+      const latestRevision = useBoardStore.getState().revision;
+      if (latestRevision > savedRevision) coordinator.current?.schedule(latestRevision);
     } catch (error) { usePersistenceStore.getState().enterSessionOnly(normalizePersistenceError(error, "write")); }
   }, [repository, startCoordinator]);
 
   const startNewBoard = useCallback(async () => {
     const board = createBoard("My first draft");
     useBoardStore.getState().setBoard(board); useViewportStore.getState().setViewport(board.viewport);
-    usePersistenceStore.getState().clearRecovery(); usePersistenceStore.getState().markSaving(0); localStorage.setItem(LAST_BOARD, board.id);
-    try { await repository.create(board); startCoordinator(); usePersistenceStore.getState().markSaved(0, new Date().toISOString()); }
+    const savedRevision = useBoardStore.getState().revision;
+    usePersistenceStore.getState().clearRecovery(); usePersistenceStore.getState().markSaving(savedRevision);
+    try {
+      await repository.create(board); localStorage.setItem(LAST_BOARD, board.id); startCoordinator();
+      usePersistenceStore.getState().markSaved(savedRevision, new Date().toISOString());
+      const latestRevision = useBoardStore.getState().revision;
+      if (latestRevision > savedRevision) coordinator.current?.schedule(latestRevision);
+    }
     catch (error) { enterSessionOnly(error); }
   }, [enterSessionOnly, repository, startCoordinator]);
 
   const downloadRecovery = useCallback(async () => {
     const recovery = usePersistenceStore.getState().recovery; if (!recovery) return;
-    const result = serializeRecoveryBackup(recovery);
-    if (result.ok) downloadBackup(result); else usePersistenceStore.getState().setError(result.error);
+    finishBackup(serializeRecoveryBackup(recovery));
   }, []);
 
   const downloadCurrentBackup = useCallback(async () => {
     const board = useBoardStore.getState().board; if (!board) return;
-    const result = serializeBoardBackup(board);
-    if (result.ok) downloadBackup(result);
-    else usePersistenceStore.getState().setError(result.error);
+    finishBackup(serializeBoardBackup(board));
   }, []);
 
   return { retrySave, retryStorage, startNewBoard, downloadRecovery, downloadCurrentBackup };

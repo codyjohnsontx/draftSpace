@@ -2,9 +2,10 @@ import { openDB, type DBSchema, type IDBPDatabase } from "idb";
 import type { BoardDocument, BoardSummary } from "@/core/board/types";
 import type { BoardRepository } from "./board-repository";
 import { normalizePersistenceError } from "@/features/persistence/persistence-errors";
+import { loadBoardDocument } from "@/features/persistence/load-board-document";
 
 interface DraftspaceDb extends DBSchema {
-  boards: { key: string; value: BoardDocument; indexes: { "by-updated": string } };
+  boards: { key: string; value: unknown; indexes: { "by-updated": string } };
 }
 
 const database = () => {
@@ -30,6 +31,15 @@ export class IndexedDbBoardRepository implements BoardRepository {
   async delete(id: string) { await withDatabase("write", async (db) => { await db.delete("boards", id); }); }
   async getRawById(id: string): Promise<unknown | null> { return withDatabase("read", async (db) => await db.get("boards", id) ?? null); }
   async list(): Promise<BoardSummary[]> {
-    return withDatabase("read", async (db) => { const boards = await db.getAllFromIndex("boards", "by-updated"); return boards.reverse().map((b) => ({ id: b.id, name: b.name, createdAt: b.createdAt, updatedAt: b.updatedAt, elementCount: b.elementIds.length })); });
+    return withDatabase("read", async (db) => {
+      const stored = await db.getAllFromIndex("boards", "by-updated");
+      return stored.reverse().flatMap((raw) => {
+        const id = raw && typeof raw === "object" && "id" in raw && typeof raw.id === "string" ? raw.id : "unknown";
+        const result = loadBoardDocument(id, raw);
+        if (result.kind !== "ready") return [];
+        const board = result.board;
+        return [{ id: board.id, name: board.name, createdAt: board.createdAt, updatedAt: board.updatedAt, elementCount: board.elementIds.length }];
+      });
+    });
   }
 }
