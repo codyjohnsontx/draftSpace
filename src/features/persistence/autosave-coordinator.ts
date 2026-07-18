@@ -1,6 +1,8 @@
 import type { BoardDocument } from "@/core/board/types";
 import type { BoardRepository } from "@/repositories/board-repository";
 import { normalizePersistenceError, type PersistenceError } from "./persistence-errors";
+import { cloneBoardData } from "@/lib/browser/clone-board-data";
+import { performanceNow, recordPerformanceSample } from "@/features/performance/performance-monitor";
 
 export type AutosaveEvent =
   | { type: "saving"; revision: number }
@@ -54,9 +56,11 @@ export class AutosaveCoordinator {
     const board = this.options.getBoard(); if (!board) return;
     const revision = this.options.getRevision();
     this.pendingRevision = null;
-    const snapshot = structuredClone(board);
+    const snapshot = cloneBoardData(board);
     this.options.onStateChange({ type: "saving", revision });
+    const saveStartedAt = performanceNow();
     this.activeSave = this.options.repository.update(snapshot).then(() => {
+      recordPerformanceSample({ name: "indexeddb-save", durationMs: performanceNow() - saveStartedAt, elementCount: snapshot.elementIds.length });
       this.retryIndex = 0;
       if (this.options.getRevision() === revision) this.options.onStateChange({ type: "saved", revision, savedAt: new Date().toISOString() });
     }).catch((cause) => {

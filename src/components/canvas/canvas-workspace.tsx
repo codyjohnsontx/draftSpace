@@ -3,7 +3,8 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type PointerEvent as ReactPointerEvent } from "react";
 import type { Viewport } from "@/core/board/types";
 import type { Bounds, CanvasElement, Point } from "@/core/elements/types";
-import { containsBounds, containsPoint, creationBounds, normalizeBounds, selectionBounds } from "@/core/geometry/bounds";
+import { creationBounds, normalizeBounds, selectionBounds } from "@/core/geometry/bounds";
+import { elementsContainedByBounds, hitTestElements } from "@/core/geometry/hit-testing";
 import { screenToWorld } from "@/core/geometry/coordinates";
 import { resizedBounds, scaleElements } from "@/core/geometry/resize";
 import { snapBoundsToGrid, snappedMoveDelta } from "@/core/geometry/snapping";
@@ -16,6 +17,8 @@ import { SceneCanvas } from "./scene-canvas";
 import { InteractionOverlay } from "./interaction-overlay";
 import { ToolRail } from "@/components/toolbar/tool-rail";
 import { ViewportControls } from "@/components/controls/viewport-controls";
+import { observeElementSize } from "@/lib/browser/observe-element-size";
+import { markInteraction, measurePerformance } from "@/features/performance/performance-monitor";
 
 type Gesture =
   | { type: "pan"; pointerId: number; start: Point; viewport: Viewport }
@@ -32,12 +35,7 @@ export function CanvasWorkspace() {
 
   useLayoutEffect(() => {
     const node = rootRef.current; if (!node) return;
-    const updateSize = () => {
-      const bounds = node.getBoundingClientRect();
-      setSize({ width: bounds.width, height: bounds.height });
-    };
-    updateSize();
-    const observer = new ResizeObserver(updateSize); observer.observe(node); return () => observer.disconnect();
+    return observeElementSize(node, setSize);
   }, [board?.id]);
 
   const localPoint = useCallback((event: { clientX: number; clientY: number }) => { const rect = rootRef.current!.getBoundingClientRect(); return { x: event.clientX - rect.left, y: event.clientY - rect.top }; }, []);
@@ -56,7 +54,8 @@ export function CanvasWorkspace() {
     const map = new Map(changed.map((e) => [e.id, e])); return ordered.map((e) => map.get(e.id) ?? e);
   }, [ordered, gesture, moveDelta]);
 
-  const selectedElements = displayed.filter((e) => selectedIds.includes(e.id));
+  const selectedIdSet = useMemo(() => new Set(selectedIds), [selectedIds]);
+  const selectedElements = displayed.filter((e) => selectedIdSet.has(e.id));
   const selectedBounds = selectionBounds(selectedElements);
   const current = gesture;
   const rawDraft = current?.type === "draw" ? creationBounds(current.origin, current.current, current.square, current.fromCenter) : null;
@@ -64,28 +63,30 @@ export function CanvasWorkspace() {
   const marquee = current?.type === "marquee" ? normalizeBounds(current.origin, current.current) : null;
   const snapPreview = board?.preferences.snapToGrid && (current?.type === "draw" || current?.type === "move") ? (current.type === "draw" ? draft : selectedBounds) : null;
 
-  const hitElement = (point: Point) => [...ordered].reverse().find((e) => !e.hidden && !e.locked && containsPoint(e, point, 6 / viewport.zoom));
-
   const onPointerDown = (event: ReactPointerEvent<HTMLDivElement>) => {
     if (!board || event.button === 2) return;
-    const screen = localPoint(event); const world = worldPoint(event); const target = event.target as SVGElement;
+    const target = event.target as HTMLElement;
+    if (target.closest("button, input, [role='dialog']")) return;
+    const screen = localPoint(event); const world = worldPoint(event);
     const handle = target.dataset.resizeHandle as ResizeHandle | undefined;
     rootRef.current?.setPointerCapture(event.pointerId);
     if (event.button === 1 || activeTool === "hand" || spaceHeld) setGesture({ type: "pan", pointerId: event.pointerId, start: screen, viewport });
     else if (handle && selectedBounds) setGesture({ type: "resize", pointerId: event.pointerId, origin: world, current: world, handle, initialBounds: selectedBounds, initial: selectedElements, preserveAspect: event.shiftKey, fromCenter: event.altKey });
     else if (activeTool === "rectangle") setGesture({ type: "draw", pointerId: event.pointerId, origin: world, current: world, square: event.shiftKey, fromCenter: event.altKey });
     else {
-      const hit = hitElement(world);
+      const hit = measurePerformance("point-hit-test", ordered.length, () => hitTestElements(ordered, world, 6 / viewport.zoom));
       if (hit) {
         if (event.shiftKey) { useSessionStore.getState().toggleSelected(hit.id); return; }
-        const ids = selectedIds.includes(hit.id) ? selectedIds : [hit.id]; useSessionStore.getState().setSelected(ids);
-        setGesture({ type: "move", pointerId: event.pointerId, origin: world, current: world, initial: ordered.filter((e) => ids.includes(e.id)) });
+        const ids = selectedIdSet.has(hit.id) ? selectedIds : [hit.id]; useSessionStore.getState().setSelected(ids);
+        const idSet = ids === selectedIds ? selectedIdSet : new Set(ids);
+        setGesture({ type: "move", pointerId: event.pointerId, origin: world, current: world, initial: ordered.filter((e) => idSet.has(e.id)) });
       } else setGesture({ type: "marquee", pointerId: event.pointerId, origin: world, current: world, additive: event.shiftKey });
     }
   };
 
   const onPointerMove = (event: ReactPointerEvent<HTMLDivElement>) => {
     const current = gesture; if (!current || current.pointerId !== event.pointerId) return;
+    if (current.type === "pan" || current.type === "move" || current.type === "resize") markInteraction(ordered.length);
     if (current.type === "pan") {
       const p = localPoint(event); useViewportStore.getState().setViewport({ ...current.viewport, x: current.viewport.x + p.x - current.start.x, y: current.viewport.y + p.y - current.start.y });
     } else if (current.type === "draw") setGesture({ ...current, current: worldPoint(event), square: event.shiftKey, fromCenter: event.altKey });
@@ -102,7 +103,8 @@ export function CanvasWorkspace() {
       if (board.preferences.snapToGrid) bounds = snapBoundsToGrid(bounds, board.preferences.gridSize);
       if (bounds.width >= 16 && bounds.height >= 16) { const id = useBoardStore.getState().createRectangle(bounds); if (id) useSessionStore.getState().setSelected([id]); useSessionStore.getState().setTool("select"); }
     } else if (current.type === "marquee") {
-      const bounds = normalizeBounds(current.origin, current.current); const found = ordered.filter((e) => !e.hidden && !e.locked && containsBounds(bounds, e)).map((e) => e.id);
+      const bounds = normalizeBounds(current.origin, current.current);
+      const found = measurePerformance("marquee-select", ordered.length, () => elementsContainedByBounds(ordered, bounds)).map((element) => element.id);
       useSessionStore.getState().setSelected(current.additive ? [...new Set([...selectedIds, ...found])] : found);
     } else if (current.type === "move") {
       const { x: dx, y: dy } = moveDelta(current);
@@ -131,8 +133,8 @@ export function CanvasWorkspace() {
       else if ((event.key === "Delete" || event.key === "Backspace") && selectedIds.length) { event.preventDefault(); useBoardStore.getState().deleteElements(selectedIds); useSessionStore.getState().setSelected([]); }
       else if (mod && key === "d") { event.preventDefault(); useSessionStore.getState().setSelected(useBoardStore.getState().duplicateElements(selectedIds)); }
       else if (mod && key === "a") { event.preventDefault(); useSessionStore.getState().setSelected(ordered.filter((e) => !e.locked && !e.hidden).map((e) => e.id)); }
-      else if (mod && key === "c") { event.preventDefault(); await copyElements(ordered.filter((e) => selectedIds.includes(e.id))); }
-      else if (mod && key === "x") { event.preventDefault(); const elements = ordered.filter((e) => selectedIds.includes(e.id)); await copyElements(elements); useBoardStore.getState().deleteElements(selectedIds); useSessionStore.getState().setSelected([]); }
+      else if (mod && key === "c") { event.preventDefault(); await copyElements(ordered.filter((e) => selectedIdSet.has(e.id))); }
+      else if (mod && key === "x") { event.preventDefault(); const elements = ordered.filter((e) => selectedIdSet.has(e.id)); await copyElements(elements); useBoardStore.getState().deleteElements(selectedIds); useSessionStore.getState().setSelected([]); }
       else if (mod && key === "v") { event.preventDefault(); useSessionStore.getState().setSelected(useBoardStore.getState().pasteElements(await readElements())); }
       else if (["ArrowUp", "ArrowDown", "ArrowLeft", "ArrowRight"].includes(event.key) && selectedIds.length) {
         event.preventDefault(); const amount = event.shiftKey ? 10 : 1; const dx = event.key === "ArrowLeft" ? -amount : event.key === "ArrowRight" ? amount : 0; const dy = event.key === "ArrowUp" ? -amount : event.key === "ArrowDown" ? amount : 0;
@@ -141,7 +143,7 @@ export function CanvasWorkspace() {
     };
     const up = (event: KeyboardEvent) => { if (event.code === "Space") useSessionStore.getState().setSpaceHeld(false); };
     window.addEventListener("keydown", down); window.addEventListener("keyup", up); return () => { window.removeEventListener("keydown", down); window.removeEventListener("keyup", up); };
-  }, [gesture, ordered, selectedIds]);
+  }, [gesture, ordered, selectedIds, selectedIdSet]);
 
   useEffect(() => {
     const cancel = () => setGesture(null);
@@ -150,7 +152,7 @@ export function CanvasWorkspace() {
 
   if (!board) return <div className="loading-canvas"><span /><p>Opening your draft…</p></div>;
   const cursor = spaceHeld || activeTool === "hand" ? "grab" : activeTool === "rectangle" ? "crosshair" : "default";
-  return <main ref={rootRef} className="canvas-workspace" aria-label="Draftspace infinite canvas" data-tool={activeTool} style={{ cursor }} onPointerDown={onPointerDown} onPointerMove={onPointerMove} onPointerUp={finishGesture} onPointerCancel={() => setGesture(null)} onWheel={(event) => { event.preventDefault(); const p = localPoint(event); if (classifyWheelGesture(event) === "zoom") useViewportStore.getState().zoomAt(p, viewport.zoom * Math.exp(-event.deltaY * .0015)); else useViewportStore.getState().panBy({ x: -event.deltaX, y: -event.deltaY }); }}>
+  return <main ref={rootRef} className="canvas-workspace" aria-label="Draftspace infinite canvas" data-tool={activeTool} data-board-ready="true" style={{ cursor }} onPointerDown={onPointerDown} onPointerMove={onPointerMove} onPointerUp={finishGesture} onPointerCancel={() => setGesture(null)} onWheel={(event) => { event.preventDefault(); markInteraction(ordered.length); const p = localPoint(event); if (classifyWheelGesture(event) === "zoom") useViewportStore.getState().zoomAt(p, viewport.zoom * Math.exp(-event.deltaY * .0015)); else useViewportStore.getState().panBy({ x: -event.deltaX, y: -event.deltaY }); }}>
     <SceneCanvas board={board} viewport={viewport} elements={displayed} width={size.width} height={size.height} draftRectangle={draft} />
     <InteractionOverlay bounds={selectedBounds} marquee={marquee} snapBounds={snapPreview} viewport={viewport} />
     {!board.elementIds.length && !draft && <div className="empty-hint"><p>Start with a rectangle</p><span>Press <kbd>R</kbd>, then drag anywhere</span></div>}

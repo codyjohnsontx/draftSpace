@@ -1,7 +1,7 @@
 import type { BoardDocument } from "./types";
 import type { Bounds, RectangleElement } from "@/core/elements/types";
+import { newId } from "@/lib/ids/new-id";
 
-export const newId = () => crypto.randomUUID();
 export const now = () => new Date().toISOString();
 
 export function createBoard(name = "Untitled board"): BoardDocument {
@@ -19,6 +19,8 @@ export function createBoard(name = "Untitled board"): BoardDocument {
     elements: {},
   };
 }
+
+export { newId };
 
 export function createRectangle(bounds: Bounds): RectangleElement {
   const timestamp = now();

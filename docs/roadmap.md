@@ -47,12 +47,14 @@ This roadmap favors interaction trust over feature count. Draftspace should earn
 
 ## Phase 1.2B — Performance and browser resilience
 
-**Goal:** Make local work resilient under storage failures and large boards.
+**Goal:** Prove that Draftspace remains responsive on large boards and dependable across supported browsers.
 
-- Browser capability fallbacks
-- 100/500/1,000-element benchmark fixtures
-- Render, hit-test, save, and interaction-latency instrumentation
-- Broader browser smoke coverage
+- [x] Browser capability detection, soft fallbacks, and a blocking Canvas 2D screen
+- [x] Deterministic 100/500/1,000-element all-visible and distributed benchmark fixtures
+- [x] Render, hit-test, marquee, interaction-latency, save, and load instrumentation
+- [x] Chromium, Firefox, and WebKit critical smoke coverage
+- [x] Chromium performance safety caps and JSON reports
+- [x] GitHub Actions quality, browser-smoke, and performance jobs
 
 **Acceptance:** The 1,000-element fixture remains usable and reports benchmark data. Missing non-storage browser capabilities fail with actionable fallbacks, and supported evergreen browsers pass smoke coverage.
 
