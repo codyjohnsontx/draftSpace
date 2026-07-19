@@ -2,7 +2,7 @@
 
 ## Methodology
 
-Phase 1.2B measures deterministic schema-version-1 boards containing 100, 500, or 1,000 rectangles. The `all-visible` fixture packs minimum-readable rectangles into approximately one 1280×720 viewport. The `distributed` fixture spaces the same deterministic elements across a large world grid so only a small subset is visible at once. Fixtures use fixed IDs, timestamps, dimensions, positions, and styles, and are validated with the production Zod schema.
+Phase 1.2B measures deterministic schema-version-1 boards containing 100, 500, or 1,000 rectangles. The `all-visible` fixture packs every minimum-readable rectangle within one 1280×720 viewport. The `distributed` fixture spaces the same deterministic elements across a large world grid so only a small subset is visible at once. Fixtures use fixed IDs, timestamps, dimensions, positions, and styles, and are validated with the production Zod schema.
 
 Playwright creates an isolated browser context, writes the fixture directly to IndexedDB, sets the last-opened board key, and reloads Draftspace in benchmark mode. It never uses a developer's browser profile or normal board history. The first five scene updates are warmed and discarded. Each measured run performs 30 pan/zoom updates, 50 point selections across hits and misses, 10 committed marquee gestures, and five separately saved board changes. Reports contain environment and timing metadata only—never board content.
 
@@ -33,7 +33,7 @@ Required samples per run are 20 scene renders, 50 point hit tests, 10 marquee se
 
 Product targets guide optimization but are not initial CI gates. CI fails only for missing samples, safety-cap breaches, or benchmark workflow failures.
 
-## Reference baseline — 2026-07-17
+## Reference baseline — 2026-07-18
 
 Reference machine: 14-inch MacBook Pro, Apple M1 Pro (10 cores), 16 GB memory, macOS; Playwright Chromium 149; 1280×720 viewport; device pixel ratio 1; reported hardware concurrency 10.
 
@@ -41,12 +41,12 @@ Values below are the median of three per-run p95 values for the 1,000-element fi
 
 | Metric | All-visible | Distributed | Product target | Safety cap |
 |---|---:|---:|---:|---:|
-| Scene render | 0.7 ms | 0.5 ms | 32 ms | 100 ms |
+| Scene render | 0.6 ms | 0.5 ms | 32 ms | 100 ms |
 | Point hit test | 0.1 ms | 0.1 ms | 4 ms | 20 ms |
 | Marquee selection | 0.1 ms | 0.1 ms | 8 ms | 50 ms |
-| Interaction latency | 1.1 ms | 0.9 ms | 50 ms | 150 ms |
-| IndexedDB save | 5.0 ms | 5.9 ms | 250 ms | 1,000 ms |
-| Board load | 15.6 ms | 11.2 ms | 500 ms | 1,500 ms |
+| Interaction latency | 1.1 ms | 1.0 ms | 50 ms | 150 ms |
+| IndexedDB save | 4.3 ms | 5.1 ms | 250 ms | 1,000 ms |
+| Board load | 12.5 ms | 12.5 ms | 500 ms | 1,500 ms |
 
 All product targets and CI safety caps passed. The baseline did not trigger viewport culling, requestAnimationFrame coalescing, hit-test allocation work beyond the prescribed simple loop and selection-set reductions, a spatial index, or autosave clone removal. There is therefore no before-and-after optimization comparison for this phase; this table is the preserved pre-optimization baseline.
 

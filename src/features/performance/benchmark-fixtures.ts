@@ -6,16 +6,23 @@ export type BenchmarkLayout = "all-visible" | "distributed";
 export interface BenchmarkFixtureOptions { elementCount: BenchmarkElementCount; layout: BenchmarkLayout }
 
 const TIMESTAMP = "2026-01-15T12:00:00.000Z";
+const ALL_VISIBLE_VIEWPORT_WIDTH = 1280;
+const ALL_VISIBLE_PADDING = 24;
+const ALL_VISIBLE_CELL_WIDTH = 30;
+const ALL_VISIBLE_ELEMENT_WIDTH = 24;
+const ALL_VISIBLE_COLUMNS = Math.floor(
+  (ALL_VISIBLE_VIEWPORT_WIDTH - 2 * ALL_VISIBLE_PADDING - ALL_VISIBLE_ELEMENT_WIDTH) / ALL_VISIBLE_CELL_WIDTH,
+) + 1;
 
 export function benchmarkBoardId(options: BenchmarkFixtureOptions): string {
   return `benchmark-board-${options.elementCount}-${options.layout}`;
 }
 
 export function createBenchmarkBoard(options: BenchmarkFixtureOptions): BoardDocument {
-  const columns = options.layout === "all-visible" ? Math.ceil(Math.sqrt(options.elementCount * (16 / 9))) : 25;
-  const cellWidth = options.layout === "all-visible" ? 30 : 440;
+  const columns = options.layout === "all-visible" ? ALL_VISIBLE_COLUMNS : 25;
+  const cellWidth = options.layout === "all-visible" ? ALL_VISIBLE_CELL_WIDTH : 440;
   const cellHeight = options.layout === "all-visible" ? 24 : 320;
-  const elementWidth = options.layout === "all-visible" ? 24 : 160;
+  const elementWidth = options.layout === "all-visible" ? ALL_VISIBLE_ELEMENT_WIDTH : 160;
   const elementHeight = options.layout === "all-visible" ? 18 : 100;
   const elements: Record<string, RectangleElement> = {};
   const elementIds: string[] = [];
@@ -24,7 +31,7 @@ export function createBenchmarkBoard(options: BenchmarkFixtureOptions): BoardDoc
     const column = index % columns; const row = Math.floor(index / columns);
     elementIds.push(id);
     elements[id] = {
-      id, type: "rectangle", x: 24 + column * cellWidth, y: 24 + row * cellHeight,
+      id, type: "rectangle", x: ALL_VISIBLE_PADDING + column * cellWidth, y: ALL_VISIBLE_PADDING + row * cellHeight,
       width: elementWidth, height: elementHeight, rotation: 0, groupIds: [], locked: false, hidden: false,
       opacity: 1, strokeColor: "#292724", strokeWidth: 1, strokeStyle: "solid", fillColor: "#f0ded4",
       fillStyle: "solid", roughness: 0, cornerRadius: options.layout === "all-visible" ? 3 : 10,

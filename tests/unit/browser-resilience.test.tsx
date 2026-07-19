@@ -1,5 +1,5 @@
 import { fireEvent, render, screen } from "@testing-library/react";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { cloneBoardData } from "@/lib/browser/clone-board-data";
 import { newId } from "@/lib/ids/new-id";
 import { roundedRectPath, type RoundedRectContext } from "@/lib/browser/rounded-rect-path";
@@ -7,8 +7,10 @@ import { observeElementSize } from "@/lib/browser/observe-element-size";
 import { detectBrowserCapabilities } from "@/lib/browser/capabilities";
 import { createBoard } from "@/core/board/factory";
 import { UnsupportedBrowserScreen } from "@/components/unsupported-browser/unsupported-browser-screen";
+import { usePersistenceStore } from "@/stores/persistence-store";
 
-afterEach(() => vi.unstubAllGlobals());
+beforeEach(() => usePersistenceStore.setState({ error: null }));
+afterEach(() => { vi.unstubAllGlobals(); vi.restoreAllMocks(); });
 
 describe("browser fallbacks", () => {
   it("JSON-clones validated Draftspace data without changing serialization", () => {
@@ -26,6 +28,16 @@ describe("browser fallbacks", () => {
     expect(ids.size).toBe(25);
     expect([...ids][0]).toMatch(/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/);
     vi.stubGlobal("crypto", original);
+  });
+
+  it("preserves UUID version and variant markers in the final ID fallback", () => {
+    vi.stubGlobal("crypto", undefined);
+    vi.spyOn(Date, "now").mockReturnValue(1_721_234_567_890);
+    vi.spyOn(Math, "random").mockReturnValue(.25);
+    const id = newId();
+    expect(id).toMatch(/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/);
+    expect(id.split("-")[2][0]).toBe("4");
+    expect(id.split("-")[3][0]).toBe("8");
   });
 
   it("builds a rounded path with quadratic curves when roundRect is missing", () => {
@@ -62,5 +74,11 @@ describe("unsupported browser screen", () => {
     rerender(<UnsupportedBrowserScreen canDownloadBackup onDownloadBackup={download} />);
     fireEvent.click(screen.getByRole("button", { name: "Download emergency backup" }));
     expect(download).toHaveBeenCalledOnce();
+  });
+
+  it("reports an emergency-backup rejection", async () => {
+    render(<UnsupportedBrowserScreen canDownloadBackup onDownloadBackup={vi.fn().mockRejectedValue(new Error("failed"))} />);
+    fireEvent.click(screen.getByRole("button", { name: "Download emergency backup" }));
+    expect(await screen.findByRole("alert")).toHaveTextContent("Draftspace could not download the backup file.");
   });
 });

@@ -36,6 +36,11 @@ describe("benchmark fixtures", () => {
     const compactLast = compact.elements[compact.elementIds.at(-1)!];
     const distributedLast = distributed.elements[distributed.elementIds.at(-1)!];
     expect(compactLast.y).toBeLessThan(720);
+    for (const id of compact.elementIds) {
+      const element = compact.elements[id];
+      expect(element.x + element.width).toBeLessThanOrEqual(1280);
+      expect(element.y + element.height).toBeLessThanOrEqual(720);
+    }
     expect(distributedLast.y).toBeGreaterThan(10_000);
   });
 });

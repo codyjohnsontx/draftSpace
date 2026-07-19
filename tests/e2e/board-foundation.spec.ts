@@ -13,7 +13,7 @@ test("explains every toolbar control consistently", async ({ page }, testInfo) =
     ["Zoom in", "Get a closer view"],
     ["Zoom to fit", "Fit every object"],
     ["Change background pattern", "Cycle dots, grid, and plain"],
-    ["Snap to grid", "click to align objects"],
+    ["Snap to grid", "Click to align objects"],
     ["Undo", "Reverse the last board change"],
     ["Redo", "Restore the last undone change"],
     ["Export", "Download options arrive"],

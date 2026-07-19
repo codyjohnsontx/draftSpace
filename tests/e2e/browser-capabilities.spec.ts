@@ -25,7 +25,7 @@ test.describe("Chromium capability fallbacks", () => {
     await page.addInitScript(() => Object.defineProperty(Navigator.prototype, "clipboard", { configurable: true, get: () => undefined }));
     await page.goto("/"); await expect(page.getByRole("main", { name: "Draftspace infinite canvas" })).toBeVisible();
     await page.keyboard.press("r"); await page.mouse.move(250, 180); await page.mouse.down(); await page.mouse.move(420, 290); await page.mouse.up();
-    await page.keyboard.press("Control+c"); await page.keyboard.press("Control+v");
+    await page.keyboard.press("ControlOrMeta+c"); await page.keyboard.press("ControlOrMeta+v");
     await page.keyboard.press("Control+z");
     await expect(page.getByText("Start with a rectangle")).toHaveCount(0);
     await page.keyboard.press("Control+z");

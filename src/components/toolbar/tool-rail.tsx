@@ -14,10 +14,10 @@ export function ToolRail() {
   const active = useSessionStore((s) => s.activeTool); const setTool = useSessionStore((s) => s.setTool);
   return <nav className="tool-rail" aria-label="Drawing tools">{tools.map(({ id, label, description, key, icon: Icon }) => {
     return <Tooltip key={id} label={label} description={description} shortcut={key}>{(tooltipId) =>
-      <button className={active === id ? "tool active" : "tool"} aria-label={label} aria-pressed={active === id} aria-describedby={tooltipId} onClick={() => setTool(id)}><Icon size={19} /><span>{key}</span><b className="sr-only">{label}</b></button>}
+      <button type="button" className={active === id ? "tool active" : "tool"} aria-label={label} aria-pressed={active === id} aria-describedby={tooltipId} onClick={() => setTool(id)}><Icon size={19} /><span>{key}</span><b className="sr-only">{label}</b></button>}
     </Tooltip>;
   })}
     <span className="divider vertical" />
-    <Tooltip label="Tool lock" description="Keep a drawing tool active — coming soon">{(tooltipId) => <button className="tool" aria-label="Tool lock" aria-describedby={tooltipId}><LockKeyhole size={18} /></button>}</Tooltip>
+    <Tooltip label="Tool lock" description="Keep a drawing tool active — coming soon">{(tooltipId) => <button type="button" className="tool" aria-label="Tool lock" aria-describedby={tooltipId}><LockKeyhole size={18} /></button>}</Tooltip>
   </nav>;
 }

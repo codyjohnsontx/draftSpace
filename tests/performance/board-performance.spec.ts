@@ -44,7 +44,7 @@ async function runFixture(page: Page, testInfo: TestInfo, options: BenchmarkFixt
   await page.getByRole("button", { name: "Reset zoom to 100%" }).click();
   await page.waitForTimeout(30);
 
-  const hit = options.layout === "all-visible" ? { x: 100, y: 100 } : { x: 500, y: 380 };
+  const hit = options.layout === "all-visible" ? { x: 100, y: 80 } : { x: 500, y: 380 };
   for (let index = 0; index < 50; index += 1) {
     await page.mouse.click(index % 2 === 0 ? hit.x : 1260, index % 2 === 0 ? hit.y : 690);
   }
