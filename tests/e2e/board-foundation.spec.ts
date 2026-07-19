@@ -119,7 +119,7 @@ test("flushes the viewport when the document becomes hidden", async ({ page }) =
   }))).toBeGreaterThan(1);
 });
 
-test("preserves a corrupt board and offers recovery", async ({ page }, testInfo) => {
+test("preserves a corrupt board and offers recovery", async ({ browserName, page }, testInfo) => {
   await page.goto("/");
   await expect(page.getByRole("main", { name: "Draftspace infinite canvas" })).toBeVisible();
   const damagedId = await page.evaluate(() => localStorage.getItem("draftspace:last-board"));
@@ -139,9 +139,18 @@ test("preserves a corrupt board and offers recovery", async ({ page }, testInfo)
   await expect(page.getByRole("heading", { name: "We couldn’t open this board" })).toBeVisible();
   await page.waitForTimeout(400);
   await page.screenshot({ path: testInfo.outputPath("draftspace-recovery.png") });
-  const downloadPromise = page.waitForEvent("download"); await page.getByRole("button", { name: "Download raw data" }).click();
-  expect((await downloadPromise).suggestedFilename()).toContain("draftspace-recovery");
-  await page.getByRole("button", { name: "Start a new board" }).click();
+  const activateRecoveryAction = async (name: "Download raw data" | "Start a new board") => {
+    const button = page.getByRole("button", { name });
+    // GitHub-hosted Firefox can misroute pointer coordinates on this screen; the other engines retain pointer coverage.
+    if (browserName === "firefox") await button.press("Enter");
+    else await button.click();
+  };
+  const [download] = await Promise.all([
+    page.waitForEvent("download"),
+    activateRecoveryAction("Download raw data"),
+  ]);
+  expect(download.suggestedFilename()).toContain("draftspace-recovery");
+  await activateRecoveryAction("Start a new board");
   await expect(page.getByRole("main", { name: "Draftspace infinite canvas" })).toBeVisible();
   const originalStillExists = await page.evaluate(async (id) => new Promise<boolean>((resolve, reject) => {
     const request = indexedDB.open("draftspace", 1); request.onerror = () => reject(request.error); request.onsuccess = () => {

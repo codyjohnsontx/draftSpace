@@ -10,15 +10,7 @@ export default defineConfig({
   webServer: { command: `npm run start -- --port ${port}`, url: baseURL, reuseExistingServer: false },
   projects: [
     { name: "chromium", use: { ...devices["Desktop Chrome"] } },
-    {
-      name: "firefox",
-      use: {
-        ...devices["Desktop Firefox"],
-        launchOptions: {
-          firefoxUserPrefs: { "layout.css.devPixelsPerPx": "1.0" },
-        },
-      },
-    },
+    { name: "firefox", use: { ...devices["Desktop Firefox"] } },
     { name: "webkit", use: { ...devices["Desktop Safari"] } },
   ],
 });
