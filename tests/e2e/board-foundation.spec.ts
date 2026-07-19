@@ -169,17 +169,20 @@ test("keeps the canvas usable without IndexedDB", async ({ browserName, page }, 
   });
   await page.goto("/");
   await expect(page.getByRole("main", { name: "Draftspace infinite canvas" })).toBeVisible();
-  const notSavingButton = page.getByRole("button", { name: "Not saving" });
-  await expect(notSavingButton).toBeVisible();
-  // Match the recovery-action workaround above; re-evaluate after Playwright or Firefox upgrades.
-  if (browserName === "firefox") await notSavingButton.press("Enter");
-  else await notSavingButton.click();
+  const activateStorageAction = async (name: "Not saving" | "Retry storage") => {
+    const button = page.getByRole("button", { name });
+    await expect(button).toBeVisible();
+    // Match the recovery-action workaround above; re-evaluate after Playwright or Firefox upgrades.
+    if (browserName === "firefox") await button.press("Enter");
+    else await button.click();
+  };
+  await activateStorageAction("Not saving");
   await expect(page.getByRole("dialog", { name: "Local storage unavailable" })).toBeVisible();
   await page.waitForTimeout(250);
   await page.screenshot({ path: testInfo.outputPath("draftspace-session-only.png") });
   await expect(page.getByRole("button", { name: "Retry storage" })).toBeVisible();
   await expect(page.getByRole("button", { name: "Download backup" })).toBeVisible();
   await page.evaluate(() => (globalThis as typeof globalThis & { __enableDraftspaceStorage: () => void }).__enableDraftspaceStorage());
-  await page.getByRole("button", { name: "Retry storage" }).click();
+  await activateStorageAction("Retry storage");
   await expect(page.getByText("Saved locally")).toBeVisible();
 });
