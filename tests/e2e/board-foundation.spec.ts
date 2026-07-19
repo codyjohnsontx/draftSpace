@@ -142,6 +142,7 @@ test("preserves a corrupt board and offers recovery", async ({ browserName, page
   const activateRecoveryAction = async (name: "Download raw data" | "Start a new board") => {
     const button = page.getByRole("button", { name });
     // GitHub-hosted Firefox can misroute pointer coordinates on this screen; the other engines retain pointer coverage.
+    // Re-evaluate after Playwright or Firefox upgrades and restore click() when CI pointer coordinates are reliable.
     if (browserName === "firefox") await button.press("Enter");
     else await button.click();
   };
@@ -160,7 +161,7 @@ test("preserves a corrupt board and offers recovery", async ({ browserName, page
   expect(originalStillExists).toBe(true);
 });
 
-test("keeps the canvas usable without IndexedDB", async ({ page }, testInfo) => {
+test("keeps the canvas usable without IndexedDB", async ({ browserName, page }, testInfo) => {
   await page.addInitScript(() => {
     const availableStorage = globalThis.indexedDB; let enabled = false;
     Object.defineProperty(globalThis, "indexedDB", { configurable: true, get: () => enabled ? availableStorage : undefined });
@@ -168,7 +169,11 @@ test("keeps the canvas usable without IndexedDB", async ({ page }, testInfo) => 
   });
   await page.goto("/");
   await expect(page.getByRole("main", { name: "Draftspace infinite canvas" })).toBeVisible();
-  await page.getByRole("button", { name: "Not saving" }).click();
+  const notSavingButton = page.getByRole("button", { name: "Not saving" });
+  await expect(notSavingButton).toBeVisible();
+  // Match the recovery-action workaround above; re-evaluate after Playwright or Firefox upgrades.
+  if (browserName === "firefox") await notSavingButton.press("Enter");
+  else await notSavingButton.click();
   await expect(page.getByRole("dialog", { name: "Local storage unavailable" })).toBeVisible();
   await page.waitForTimeout(250);
   await page.screenshot({ path: testInfo.outputPath("draftspace-session-only.png") });
