@@ -20,9 +20,12 @@ export const containsBounds = (outer: Bounds, inner: Bounds) =>
 
 export function selectionBounds(elements: CanvasElement[]): Bounds | null {
   if (!elements.length) return null;
-  const left = Math.min(...elements.map((e) => e.x));
-  const top = Math.min(...elements.map((e) => e.y));
-  const right = Math.max(...elements.map((e) => e.x + e.width));
-  const bottom = Math.max(...elements.map((e) => e.y + e.height));
+  let left = elements[0].x; let top = elements[0].y;
+  let right = elements[0].x + elements[0].width; let bottom = elements[0].y + elements[0].height;
+  for (let index = 1; index < elements.length; index += 1) {
+    const element = elements[index];
+    left = Math.min(left, element.x); top = Math.min(top, element.y);
+    right = Math.max(right, element.x + element.width); bottom = Math.max(bottom, element.y + element.height);
+  }
   return { x: left, y: top, width: right - left, height: bottom - top };
 }

@@ -9,6 +9,7 @@ import { AutosaveCoordinator, type AutosaveEvent } from "@/features/persistence/
 import { loadBoardDocument } from "@/features/persistence/load-board-document";
 import { downloadBackup, serializeBoardBackup, serializeRecoveryBackup, type BackupResult } from "@/features/persistence/backup";
 import { normalizePersistenceError } from "@/features/persistence/persistence-errors";
+import { performanceNow, recordPerformanceSample } from "@/features/performance/performance-monitor";
 
 const LAST_BOARD = "draftspace:last-board";
 
@@ -84,6 +85,7 @@ export function useBoardPersistence(): PersistenceController {
           useBoardStore.getState().setBoard(board); useViewportStore.getState().setViewport(board.viewport);
           await startCoordinator(); persistence.markSaved(0, new Date().toISOString()); return;
         }
+        const loadStartedAt = performanceNow();
         const result = loadBoardDocument(id, await repository.getRawById(id));
         if (result.kind === "missing") {
           const board = createBoard("My first draft");
@@ -99,6 +101,7 @@ export function useBoardPersistence(): PersistenceController {
         }
         useBoardStore.getState().setBoard(result.board);
         useViewportStore.getState().setViewport(result.board.preferences.restoreViewport ? result.board.viewport : { x: 0, y: 0, zoom: 1 });
+        recordPerformanceSample({ name: "board-load", durationMs: performanceNow() - loadStartedAt, elementCount: result.board.elementIds.length });
         await startCoordinator(); persistence.markSaved(0, new Date().toISOString());
       } catch (error) { console.error("Draftspace could not initialize local persistence", error); enterSessionOnly(error); }
     })();

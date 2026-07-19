@@ -62,6 +62,10 @@ button { color: inherit; }
 .compact-primary { color: #fff; border: 1px solid var(--accent); background: var(--accent); }.compact-secondary { border: 1px solid var(--line); background: transparent; }.compact-primary:hover { background: #9f4f34; }.compact-secondary:hover { background: rgba(51,47,43,.05); }
 
 .recovery-screen { position: relative; display: grid; place-items: center; width: 100vw; min-height: 100svh; padding: 88px 24px 48px; background: var(--canvas); overflow: auto; }
+.unsupported-browser-screen { position: relative; display: grid; place-items: center; width: 100vw; min-height: 100svh; padding: 88px 24px 48px; background: var(--canvas); overflow: auto; }
+.unsupported-browser-content { width: min(100%, 620px); animation: recovery-in .35s cubic-bezier(.2,.8,.2,1) both; }
+.unsupported-browser-content h1 { margin: 0; max-width: 590px; font-size: clamp(32px, 5vw, 50px); line-height: 1.02; letter-spacing: -.05em; }
+.unsupported-browser-note { padding-top: 17px; border-top: 1px solid var(--line); color: var(--muted); font-size: 13px; }
 .recovery-brand { position: absolute; top: 24px; left: 28px; display: flex; align-items: center; gap: 9px; letter-spacing: -.025em; }
 .recovery-content { width: min(100%, 560px); animation: recovery-in .35s cubic-bezier(.2,.8,.2,1) both; }
 .recovery-icon { display: grid; place-items: center; width: 46px; height: 46px; margin-bottom: 22px; color: #8c4934; background: #f0ded4; border-radius: 13px; }
@@ -81,6 +85,32 @@ button { color: inherit; }
 .tool { position: relative; width: 38px; height: 38px; }
 .tool > span { position: absolute; right: 3px; bottom: 1px; font: 8px var(--font-mono), monospace; color: var(--muted); }
 .tool.active { color: #7e361f; background: var(--accent-soft); box-shadow: inset 0 0 0 1px rgba(184,95,63,.15); }
+.tooltip-anchor { position: relative; display: inline-grid; place-items: center; flex: 0 0 auto; }
+.app-tooltip {
+  position: absolute; z-index: 50; left: 50%; bottom: calc(100% + 13px); display: flex; align-items: center; gap: 14px;
+  width: max-content; max-width: 260px; padding: 10px 11px 10px 12px; color: #fffdfa; background: #292724;
+  border: 1px solid rgba(255,255,255,.1); border-radius: 9px; box-shadow: 0 8px 24px rgba(38,33,28,.2);
+  opacity: 0; visibility: hidden; pointer-events: none; transform: translate(-50%, 5px) scale(.98); transform-origin: 50% 100%;
+  transition: none; white-space: nowrap;
+}
+.app-tooltip::after { content: ""; position: absolute; left: 50%; top: 100%; width: 8px; height: 8px; background: #292724; border-right: 1px solid rgba(255,255,255,.1); border-bottom: 1px solid rgba(255,255,255,.1); transform: translate(-50%, -4px) rotate(45deg); }
+.tooltip-anchor:hover .app-tooltip, .tooltip-anchor:focus-within .app-tooltip { opacity: 1; visibility: visible; transform: translate(-50%, 0) scale(1); transition: none; }
+.app-tooltip-copy { display: grid; gap: 2px; text-align: left; }
+.app-tooltip strong { font-size: 12px; font-weight: 650; letter-spacing: -.01em; }
+.app-tooltip small { color: rgba(255,253,250,.68); font-size: 11px; }
+.app-tooltip kbd { min-width: 23px; height: 23px; color: #fffdfa; border-color: rgba(255,255,255,.22); border-bottom-color: rgba(255,255,255,.34); background: rgba(255,255,255,.08); }
+.tooltip-anchor[data-side="bottom"] .app-tooltip { top: calc(100% + 11px); bottom: auto; transform: translate(-50%, -5px) scale(.98); transform-origin: 50% 0; }
+.tooltip-anchor[data-side="bottom"] .app-tooltip::after { top: auto; bottom: 100%; border: 0; border-left: 1px solid rgba(255,255,255,.1); border-top: 1px solid rgba(255,255,255,.1); transform: translate(-50%, 4px) rotate(45deg); }
+.tooltip-anchor[data-side="bottom"]:hover .app-tooltip, .tooltip-anchor[data-side="bottom"]:focus-within .app-tooltip { transform: translate(-50%, 0) scale(1); }
+.tooltip-anchor[data-align="start"] .app-tooltip { left: 0; transform: translate(0, 5px) scale(.98); }
+.tooltip-anchor[data-align="start"] .app-tooltip::after { left: 16px; }
+.tooltip-anchor[data-align="start"]:hover .app-tooltip, .tooltip-anchor[data-align="start"]:focus-within .app-tooltip { transform: translate(0, 0) scale(1); }
+.tooltip-anchor[data-align="end"] .app-tooltip { right: 0; left: auto; transform: translate(0, 5px) scale(.98); }
+.tooltip-anchor[data-align="end"] .app-tooltip::after { right: 16px; left: auto; }
+.tooltip-anchor[data-align="end"]:hover .app-tooltip, .tooltip-anchor[data-align="end"]:focus-within .app-tooltip { transform: translate(0, 0) scale(1); }
+.tooltip-anchor[data-side="bottom"][data-align="start"] .app-tooltip, .tooltip-anchor[data-side="bottom"][data-align="end"] .app-tooltip { transform: translate(0, -5px) scale(.98); }
+.tooltip-anchor[data-side="bottom"][data-align="start"]:hover .app-tooltip, .tooltip-anchor[data-side="bottom"][data-align="start"]:focus-within .app-tooltip, .tooltip-anchor[data-side="bottom"][data-align="end"]:hover .app-tooltip, .tooltip-anchor[data-side="bottom"][data-align="end"]:focus-within .app-tooltip { transform: translate(0, 0) scale(1); }
+body:has(.tooltip-anchor:hover) .tooltip-anchor:focus-within:not(:hover) .app-tooltip { opacity: 0; visibility: hidden; transition: none; }
 
 .viewport-controls { position: absolute; z-index: 10; left: 18px; bottom: 20px; display: flex; align-items: center; gap: 1px; padding: 5px; background: var(--surface); border: 1px solid var(--line); border-radius: 11px; box-shadow: 0 4px 18px rgba(49,42,34,.08); }
 .viewport-controls button { width: 32px; height: 30px; }
@@ -107,7 +137,7 @@ kbd { display: inline-grid; min-width: 21px; height: 21px; place-items: center; 
 
 @media (max-width: 720px) {
   .top-bar { left: 8px; right: 8px; top: 8px; }
-  .brand-lockup strong, .save-status span, .top-actions .divider, .top-actions .icon-button:nth-of-type(n+3) { display: none; }
+  .brand-lockup strong, .save-status span, .top-actions .divider, .top-actions .desktop-secondary { display: none; }
   .brand-lockup { padding-right: 0; }.mobile-only { display: grid; }.board-name { width: 42vw; border-left: 0; }
   .viewport-controls { left: 8px; bottom: 76px; }.tool-rail { bottom: 14px; }
 }
