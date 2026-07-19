@@ -7,7 +7,11 @@ import { usePersistenceStore } from "@/stores/persistence-store";
 export function UnsupportedBrowserScreen({ canDownloadBackup, onDownloadBackup }: { canDownloadBackup: boolean; onDownloadBackup: () => Promise<void> }) {
   const error = usePersistenceStore((state) => state.error);
   const handleDownloadBackup = async () => {
-    try { await onDownloadBackup(); }
+    const existingError = usePersistenceStore.getState().error;
+    try {
+      await onDownloadBackup();
+      if (existingError?.code === "backup-failed" && usePersistenceStore.getState().error === existingError) usePersistenceStore.setState({ error: null });
+    }
     catch (cause) { usePersistenceStore.getState().setError(persistenceError("backup-failed", "Draftspace could not download the backup file.", false, cause)); }
   };
   return <main className="unsupported-browser-screen" aria-labelledby="unsupported-browser-heading">

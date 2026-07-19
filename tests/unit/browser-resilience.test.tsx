@@ -1,4 +1,4 @@
-import { fireEvent, render, screen } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { cloneBoardData } from "@/lib/browser/clone-board-data";
 import { newId } from "@/lib/ids/new-id";
@@ -76,9 +76,13 @@ describe("unsupported browser screen", () => {
     expect(download).toHaveBeenCalledOnce();
   });
 
-  it("reports an emergency-backup rejection", async () => {
-    render(<UnsupportedBrowserScreen canDownloadBackup onDownloadBackup={vi.fn().mockRejectedValue(new Error("failed"))} />);
+  it("clears a stale emergency-backup error after a successful retry", async () => {
+    const download = vi.fn().mockRejectedValueOnce(new Error("failed")).mockResolvedValueOnce(undefined);
+    render(<UnsupportedBrowserScreen canDownloadBackup onDownloadBackup={download} />);
     fireEvent.click(screen.getByRole("button", { name: "Download emergency backup" }));
     expect(await screen.findByRole("alert")).toHaveTextContent("Draftspace could not download the backup file.");
+    fireEvent.click(screen.getByRole("button", { name: "Download emergency backup" }));
+    await waitFor(() => expect(screen.queryByRole("alert")).not.toBeInTheDocument());
+    expect(download).toHaveBeenCalledTimes(2);
   });
 });
