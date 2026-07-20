@@ -19,5 +19,11 @@ describe("board schema", () => {
     ]);
   });
   it("rejects missing ordered elements", () => { const board = createBoard(); board.elementIds.push("missing"); expect(boardSchema.safeParse(board).success).toBe(false); });
+  it("rejects ordered IDs inherited from the element-map prototype", () => {
+    const board = createBoard(); board.elementIds.push("toString");
+    const result = boardSchema.safeParse(board);
+    expect(result.success).toBe(false);
+    if (!result.success) expect(result.error.issues).toContainEqual(expect.objectContaining({ message: "Missing element toString" }));
+  });
   it("rejects unsupported versions", () => expect(boardSchema.safeParse({ ...createBoard(), schemaVersion: 3 }).success).toBe(false));
 });

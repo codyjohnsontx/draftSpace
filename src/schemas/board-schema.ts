@@ -56,7 +56,7 @@ type OrderedBoard = { elementIds: string[]; elements: Record<string, unknown> };
 const validateElementOrder = (board: OrderedBoard, ctx: z.RefinementCtx) => {
   const ids = new Set(board.elementIds);
   if (ids.size !== board.elementIds.length) ctx.addIssue({ code: "custom", message: "Element order contains duplicate IDs" });
-  for (const id of board.elementIds) if (!board.elements[id]) ctx.addIssue({ code: "custom", message: `Missing element ${id}` });
+  for (const id of board.elementIds) if (!Object.prototype.hasOwnProperty.call(board.elements, id)) ctx.addIssue({ code: "custom", message: `Missing element ${id}` });
   for (const id of Object.keys(board.elements)) if (!ids.has(id)) ctx.addIssue({ code: "custom", message: `Unordered element ${id}` });
 };
 
