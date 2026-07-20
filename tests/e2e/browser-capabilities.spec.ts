@@ -69,6 +69,8 @@ test.describe("Chromium capability fallbacks", () => {
     await page.reload();
     await expect(page.getByRole("main", { name: "Draftspace infinite canvas" })).toBeVisible();
     await expect(page.getByRole("button", { name: "Not saving" })).toBeVisible();
+    await page.getByRole("button", { name: "Not saving" }).click();
+    await expect(page.getByText("Browser storage is full.")).toBeVisible();
     await expect(page.getByText("Start with a shape")).toHaveCount(0);
   });
 });

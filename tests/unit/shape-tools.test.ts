@@ -1,5 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 import { shapePath } from "@/core/rendering/shape-path";
+import { createBoard } from "@/core/board/factory";
+import { useBoardStore } from "@/stores/board-store";
 
 function contextStub() {
   return {
@@ -28,5 +30,17 @@ describe("shape paths", () => {
     expect(context.lineTo).toHaveBeenNthCalledWith(2, 60, 80);
     expect(context.lineTo).toHaveBeenNthCalledWith(3, 10, 50);
     expect(context.closePath).toHaveBeenCalledOnce();
+  });
+});
+
+describe("shape creation", () => {
+  it("returns null without a loaded board and an ID after successful creation", () => {
+    useBoardStore.setState({ board: null });
+    expect(useBoardStore.getState().createShape("ellipse", { x: 0, y: 0, width: 100, height: 60 })).toBeNull();
+
+    useBoardStore.getState().setBoard(createBoard());
+    const id = useBoardStore.getState().createShape("ellipse", { x: 0, y: 0, width: 100, height: 60 });
+    expect(id).toEqual(expect.any(String));
+    expect(useBoardStore.getState().board?.elements[id!]?.type).toBe("ellipse");
   });
 });

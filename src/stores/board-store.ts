@@ -33,6 +33,7 @@ export const useBoardStore = create<BoardStore>((set, get) => ({
     if (entry) set({ board: next, history: pushHistory(history, entry), revision: revision + 1 });
   },
   createShape: (type, bounds) => {
+    if (!get().board) return null;
     const element = createShape(type, bounds);
     get().commit(`Create ${type}`, (board) => { board.elementIds.push(element.id); board.elements[element.id] = element; });
     return element.id;

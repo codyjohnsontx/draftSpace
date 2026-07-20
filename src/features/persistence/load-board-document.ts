@@ -15,7 +15,7 @@ export function loadBoardDocument(boardId: string, raw: unknown | null): BoardLo
   const candidate = record(raw);
   const schemaVersion = typeof candidate?.schemaVersion === "number" ? candidate.schemaVersion : undefined;
   const migration = migrateStoredBoard(raw, schemaVersion);
-  if (candidate?.fileFormat === "draftspace/board" && !migration.ok) return { kind: "unsupported-version", boardId, raw, schemaVersion: migration.schemaVersion };
+  if (candidate?.fileFormat === "draftspace/board" && !migration.ok && migration.reason === "unsupported-version") return { kind: "unsupported-version", boardId, raw, schemaVersion: migration.schemaVersion };
   const parsed = boardSchema.safeParse(migration.ok ? migration.value : raw);
   if (parsed.success) return { kind: "ready", board: parsed.data as BoardDocument, migrated: migration.ok && migration.migrated };
   return { kind: "invalid", boardId, raw, issues: parsed.error.issues.slice(0, 3).map((issue) => issue.path.length ? `${issue.path.join(".")}: ${issue.message}` : issue.message) };
