@@ -6,6 +6,8 @@ Draftspace owns its scene model. Canvas 2D renders persistent elements and the i
 
 Canvas-domain work is kept outside React. `renderScene` owns clearing, background and element drawing, draft drawing, and rendered-element counts. Pure geometry modules own hit testing, marquee containment, viewport bounds, and visibility intersection. `SceneCanvas` retains only canvas ownership, backing-buffer sizing, the device-pixel-ratio transform, React lifecycle integration, and timing around the pure renderer.
 
+Rectangles, ellipses, and diamonds form a discriminated shape union over shared bounds and style fields. A shared path builder keeps persistent rendering and draft previews consistent. Point hit testing follows each visible silhouette, while marquee selection deliberately retains full bounding-box containment so group selection behavior stays predictable.
+
 ## State boundaries
 
 The board store contains only versioned, persistent document state. The session store contains tools and selection. The viewport store owns the camera. Gesture previews remain local to the canvas workspace and commit a single board transaction on pointer-up, preventing pointer frames from entering history or persistence.
@@ -32,4 +34,4 @@ Canvas 2D is the only browser capability that blocks the working surface. Withou
 
 ## Schema evolution
 
-The portable identifier is `draftspace/board`; the initial schema version is `1`. Element order is stored once in `elementIds` rather than duplicated as a layer index. Future migrations will run sequentially and validate their final output before replacing stored state.
+The portable identifier is `draftspace/board`; the current schema version is `2`. Version 2 adds ellipse and diamond element variants. Version-1 rectangle boards migrate by changing only the schema version, then pass through the complete production schema before entering board state or being written back. If migration write-back fails, the validated board remains usable in session-only mode. The IndexedDB database remains version 1 because document schema evolution does not require an object-store change. Element order is stored once in `elementIds` rather than duplicated as a layer index. Future migrations run sequentially and validate their final output before replacing stored state.

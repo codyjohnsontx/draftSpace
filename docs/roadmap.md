@@ -58,18 +58,28 @@ This roadmap favors interaction trust over feature count. Draftspace should earn
 
 **Acceptance:** The 1,000-element fixture remains usable and reports benchmark data. Missing non-storage browser capabilities fail with actionable fallbacks, and supported evergreen browsers pass smoke coverage.
 
-## Phase 2.1 — Core shapes and styling
+## Phase 2.1A — Shape foundation
+
+**Goal:** Add the first diagramming shapes without weakening the trusted rectangle workflow.
+
+- [x] Ellipse and diamond tools with direct toolbar buttons and E/D shortcuts
+- [x] Shared shape creation, rendering, transformation, history, clipboard, and persistence contracts
+- [x] Shape-silhouette point selection with full-bounds marquee containment
+- [x] Schema-version-2 documents and validated version-1 rectangle-board migration
+
+**Acceptance:** Ellipses and diamonds use the same modifiers, one-shot creation flow, selection controls, history, clipboard, persistence, and recovery behavior as rectangles. Existing version-1 rectangle boards migrate without data loss.
+
+## Phase 2.1B — Lines and styling
 
 **Goal:** Expand visual vocabulary without weakening the interaction model.
 
-- Ellipse and diamond tools
 - Straight lines
 - Rotation
 - Contextual inspector
 - Stroke, fill, width, style, opacity, and corner-radius controls
 - Curated and recent colors
 
-**Acceptance:** Every new shape uses the same selection, transformation, history, clipboard, persistence, and export contracts as rectangles.
+**Acceptance:** Lines and every styling change use the same selection, transformation, history, clipboard, persistence, and export contracts as existing shapes.
 
 ## Phase 2.2 — Text, notes, and freehand
 

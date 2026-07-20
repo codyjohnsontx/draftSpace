@@ -1,6 +1,8 @@
 import type { BoardDocument, Viewport } from "@/core/board/types";
-import type { Bounds, CanvasElement } from "@/core/elements/types";
-import { roundedRectPath } from "@/lib/browser/rounded-rect-path";
+import type { Bounds, CanvasElement, ShapeType } from "@/core/elements/types";
+import { shapePath } from "./shape-path";
+
+export interface ShapeDraft { type: ShapeType; bounds: Bounds }
 
 export interface RenderSceneInput {
   context: CanvasRenderingContext2D;
@@ -8,12 +10,12 @@ export interface RenderSceneInput {
   viewport: Viewport;
   elements: CanvasElement[];
   canvasSize: { width: number; height: number };
-  draftRectangle: Bounds | null;
+  draftShape: ShapeDraft | null;
 }
 
 export interface RenderSceneResult { renderedElementCount: number }
 
-export function renderScene({ context, board, viewport, elements, canvasSize, draftRectangle }: RenderSceneInput): RenderSceneResult {
+export function renderScene({ context, board, viewport, elements, canvasSize, draftShape }: RenderSceneInput): RenderSceneResult {
   const { width, height } = canvasSize;
   context.clearRect(0, 0, width, height);
   context.fillStyle = "#f7f4ed";
@@ -55,17 +57,17 @@ export function renderScene({ context, board, viewport, elements, canvasSize, dr
     context.strokeStyle = element.strokeColor;
     context.lineWidth = element.strokeWidth;
     context.setLineDash(element.strokeStyle === "dashed" ? [8, 6] : element.strokeStyle === "dotted" ? [2, 5] : []);
-    roundedRectPath(context, element.x, element.y, element.width, element.height, element.cornerRadius);
+    shapePath(context, element.type, element, element.type === "rectangle" ? element.cornerRadius : 0);
     if (element.fillColor) context.fill();
     context.stroke();
   }
-  if (draftRectangle) {
+  if (draftShape) {
     context.globalAlpha = .72;
     context.fillStyle = "#ead9cc";
     context.strokeStyle = "#b85f3f";
     context.lineWidth = 2 / viewport.zoom;
     context.setLineDash([6 / viewport.zoom, 4 / viewport.zoom]);
-    roundedRectPath(context, draftRectangle.x, draftRectangle.y, draftRectangle.width, draftRectangle.height, 10);
+    shapePath(context, draftShape.type, draftShape.bounds, draftShape.type === "rectangle" ? 10 : 0);
     context.fill(); context.stroke();
   }
   context.restore();

@@ -1,10 +1,10 @@
 import { create } from "zustand";
-import type { Bounds, Point } from "@/core/elements/types";
+import type { Bounds, Point, ShapeType } from "@/core/elements/types";
 
-export type Tool = "select" | "hand" | "rectangle";
+export type Tool = "select" | "hand" | ShapeType;
 export type ResizeHandle = "nw" | "n" | "ne" | "e" | "se" | "s" | "sw" | "w";
 export type Preview =
-  | { type: "rectangle"; bounds: Bounds }
+  | { type: ShapeType; bounds: Bounds }
   | { type: "marquee"; bounds: Bounds }
   | null;
 

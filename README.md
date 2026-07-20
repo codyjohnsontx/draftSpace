@@ -1,6 +1,6 @@
 # Draftspace
 
-Draftspace is a local-first infinite canvas where rough ideas become clear. Phase 1 establishes the dependable interaction loop: pan, pointer-centered zoom, rectangle creation, selection, movement, resizing, clipboard actions, undo/redo, and IndexedDB persistence.
+Draftspace is a local-first infinite canvas where rough ideas become clear. Its dependable interaction loop supports pan, pointer-centered zoom, rectangle, ellipse, and diamond creation, selection, movement, resizing, clipboard actions, undo/redo, and IndexedDB persistence.
 
 ## Development
 

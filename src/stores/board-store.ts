@@ -1,8 +1,8 @@
 import { create } from "zustand";
 import type { BoardDocument } from "@/core/board/types";
-import type { Bounds, CanvasElement } from "@/core/elements/types";
+import type { Bounds, CanvasElement, ShapeType } from "@/core/elements/types";
 import type { Viewport } from "@/core/board/types";
-import { createBoard, createRectangle, newId, now } from "@/core/board/factory";
+import { createBoard, createShape, newId, now } from "@/core/board/factory";
 import { emptyHistory, pushHistory, redoBoard, transact, undoBoard, type HistoryState } from "@/features/history/history";
 
 type BoardStore = {
@@ -11,7 +11,7 @@ type BoardStore = {
   revision: number;
   setBoard: (board: BoardDocument) => void;
   commit: (label: string, recipe: (draft: BoardDocument) => void) => void;
-  createRectangle: (bounds: Bounds) => string | null;
+  createShape: (type: ShapeType, bounds: Bounds) => string | null;
   deleteElements: (ids: string[]) => void;
   duplicateElements: (ids: string[]) => string[];
   pasteElements: (elements: CanvasElement[]) => string[];
@@ -32,9 +32,10 @@ export const useBoardStore = create<BoardStore>((set, get) => ({
     const { next, entry } = transact(board, label, (draft) => { recipe(draft); draft.updatedAt = now(); });
     if (entry) set({ board: next, history: pushHistory(history, entry), revision: revision + 1 });
   },
-  createRectangle: (bounds) => {
-    const element = createRectangle(bounds);
-    get().commit("Create rectangle", (board) => { board.elementIds.push(element.id); board.elements[element.id] = element; });
+  createShape: (type, bounds) => {
+    if (!get().board) return null;
+    const element = createShape(type, bounds);
+    get().commit(`Create ${type}`, (board) => { board.elementIds.push(element.id); board.elements[element.id] = element; });
     return element.id;
   },
   deleteElements: (ids) => get().commit("Delete selection", (board) => {

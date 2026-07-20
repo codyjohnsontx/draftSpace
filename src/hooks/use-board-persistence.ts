@@ -102,6 +102,7 @@ export function useBoardPersistence(): PersistenceController {
         useBoardStore.getState().setBoard(result.board);
         useViewportStore.getState().setViewport(result.board.preferences.restoreViewport ? result.board.viewport : { x: 0, y: 0, zoom: 1 });
         recordPerformanceSample({ name: "board-load", durationMs: performanceNow() - loadStartedAt, elementCount: result.board.elementIds.length });
+        if (result.migrated) await repository.update(result.board);
         await startCoordinator(); persistence.markSaved(0, new Date().toISOString());
       } catch (error) { console.error("Draftspace could not initialize local persistence", error); enterSessionOnly(error); }
     })();

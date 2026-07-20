@@ -9,6 +9,8 @@ describe("ToolRail", () => {
       { label: "Select", description: "Select, move, and resize objects", shortcut: "V" },
       { label: "Hand", description: "Pan around the canvas", shortcut: "H" },
       { label: "Rectangle", description: "Draw a rectangle", shortcut: "R" },
+      { label: "Ellipse", description: "Draw an ellipse", shortcut: "E" },
+      { label: "Diamond", description: "Draw a diamond", shortcut: "D" },
       { label: "Tool lock", description: "Keep a drawing tool active — coming soon", shortcut: null },
     ];
     for (const { label, description, shortcut } of tools) {
