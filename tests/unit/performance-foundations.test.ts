@@ -5,6 +5,7 @@ import { median, percentile, summarizeSamples } from "@/features/performance/sta
 import { getReport, initializePerformanceMonitor, recordPerformanceSample } from "@/features/performance/performance-monitor";
 import { elementsContainedByBounds, hitTestElements } from "@/core/geometry/hit-testing";
 import { intersectsBounds, worldViewportBounds } from "@/core/geometry/visibility";
+import { createShape } from "@/core/board/factory";
 import type { RectangleElement } from "@/core/elements/types";
 
 const rectangle = (id: string, overrides: Partial<RectangleElement> = {}): RectangleElement => ({
@@ -88,6 +89,15 @@ describe("hit testing", () => {
 
   it("ignores hidden and locked elements", () => {
     expect(hitTestElements([rectangle("ok"), rectangle("locked", { locked: true }), rectangle("hidden", { hidden: true })], { x: 20, y: 20 }, 0)?.id).toBe("ok");
+  });
+
+  it("selects ellipses and diamonds only inside their visible silhouettes", () => {
+    const ellipse = createShape("ellipse", { x: 0, y: 0, width: 100, height: 80 });
+    const diamond = createShape("diamond", { x: 120, y: 0, width: 100, height: 80 });
+    expect(hitTestElements([ellipse], { x: 5, y: 5 }, 0)).toBeNull();
+    expect(hitTestElements([ellipse], { x: 50, y: 40 }, 0)?.type).toBe("ellipse");
+    expect(hitTestElements([diamond], { x: 125, y: 5 }, 0)).toBeNull();
+    expect(hitTestElements([diamond], { x: 170, y: 40 }, 0)?.type).toBe("diamond");
   });
 
   it("uses full containment for marquee selection", () => {

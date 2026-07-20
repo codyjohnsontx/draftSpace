@@ -39,7 +39,7 @@ export function createBenchmarkBoard(options: BenchmarkFixtureOptions): BoardDoc
     };
   }
   return {
-    fileFormat: "draftspace/board", schemaVersion: 1, id: benchmarkBoardId(options), name: `Benchmark ${options.elementCount} ${options.layout}`,
+    fileFormat: "draftspace/board", schemaVersion: 2, id: benchmarkBoardId(options), name: `Benchmark ${options.elementCount} ${options.layout}`,
     createdAt: TIMESTAMP, updatedAt: TIMESTAMP, viewport: { x: 0, y: 0, zoom: 1 },
     preferences: { backgroundPattern: "none", gridSize: 20, snapToGrid: false, restoreViewport: true }, elementIds, elements,
   };

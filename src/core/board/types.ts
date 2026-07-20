@@ -4,7 +4,7 @@ export type Viewport = { x: number; y: number; zoom: number };
 
 export type BoardDocument = {
   fileFormat: "draftspace/board";
-  schemaVersion: 1;
+  schemaVersion: 2;
   id: string;
   name: string;
   createdAt: string;

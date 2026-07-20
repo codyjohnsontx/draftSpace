@@ -4,7 +4,7 @@ import { migrateStoredBoard } from "@/migrations/board-migrations";
 
 export type BoardLoadResult =
   | { kind: "missing" }
-  | { kind: "ready"; board: BoardDocument }
+  | { kind: "ready"; board: BoardDocument; migrated: boolean }
   | { kind: "invalid"; boardId: string; raw: unknown; issues: string[] }
   | { kind: "unsupported-version"; boardId: string; raw: unknown; schemaVersion?: number };
 
@@ -17,6 +17,6 @@ export function loadBoardDocument(boardId: string, raw: unknown | null): BoardLo
   const migration = migrateStoredBoard(raw, schemaVersion);
   if (candidate?.fileFormat === "draftspace/board" && !migration.ok) return { kind: "unsupported-version", boardId, raw, schemaVersion: migration.schemaVersion };
   const parsed = boardSchema.safeParse(migration.ok ? migration.value : raw);
-  if (parsed.success) return { kind: "ready", board: parsed.data as BoardDocument };
+  if (parsed.success) return { kind: "ready", board: parsed.data as BoardDocument, migrated: migration.ok && migration.migrated };
   return { kind: "invalid", boardId, raw, issues: parsed.error.issues.slice(0, 3).map((issue) => issue.path.length ? `${issue.path.join(".")}: ${issue.message}` : issue.message) };
 }

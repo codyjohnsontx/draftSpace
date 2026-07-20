@@ -3,9 +3,9 @@ import { z } from "zod";
 const finite = z.number().finite();
 const color = z.string().min(1).max(64);
 
-export const rectangleSchema = z.object({
+const baseShapeSchema = z.object({
   id: z.string().min(1),
-  type: z.literal("rectangle"),
+  type: z.enum(["rectangle", "ellipse", "diamond"]),
   x: finite,
   y: finite,
   width: finite.nonnegative(),
@@ -21,15 +21,23 @@ export const rectangleSchema = z.object({
   fillColor: color.nullable(),
   fillStyle: z.enum(["solid", "hachure"]),
   roughness: z.number().min(0).max(2),
-  cornerRadius: finite.nonnegative(),
   boundTextId: z.string().nullable(),
   createdAt: z.iso.datetime(),
   updatedAt: z.iso.datetime(),
 });
 
+export const rectangleSchema = baseShapeSchema.extend({
+  type: z.literal("rectangle"),
+  cornerRadius: finite.nonnegative(),
+});
+
+export const ellipseSchema = baseShapeSchema.extend({ type: z.literal("ellipse") });
+export const diamondSchema = baseShapeSchema.extend({ type: z.literal("diamond") });
+export const canvasElementSchema = z.discriminatedUnion("type", [rectangleSchema, ellipseSchema, diamondSchema]);
+
 export const boardSchema = z.object({
   fileFormat: z.literal("draftspace/board"),
-  schemaVersion: z.literal(1),
+  schemaVersion: z.literal(2),
   id: z.string().min(1),
   name: z.string().trim().min(1).max(120),
   createdAt: z.iso.datetime(),
@@ -42,7 +50,7 @@ export const boardSchema = z.object({
     restoreViewport: z.boolean(),
   }),
   elementIds: z.array(z.string()),
-  elements: z.record(z.string(), rectangleSchema),
+  elements: z.record(z.string(), canvasElementSchema),
 }).superRefine((board, ctx) => {
   const ids = new Set(board.elementIds);
   if (ids.size !== board.elementIds.length) ctx.addIssue({ code: "custom", message: "Element order contains duplicate IDs" });

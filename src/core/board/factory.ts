@@ -1,5 +1,5 @@
 import type { BoardDocument } from "./types";
-import type { Bounds, RectangleElement } from "@/core/elements/types";
+import type { BaseShapeElement, Bounds, CanvasElement, RectangleElement, ShapeType } from "@/core/elements/types";
 import { newId } from "@/lib/ids/new-id";
 
 export const now = () => new Date().toISOString();
@@ -8,7 +8,7 @@ export function createBoard(name = "Untitled board"): BoardDocument {
   const timestamp = now();
   return {
     fileFormat: "draftspace/board",
-    schemaVersion: 1,
+    schemaVersion: 2,
     id: newId(),
     name,
     createdAt: timestamp,
@@ -22,12 +22,17 @@ export function createBoard(name = "Untitled board"): BoardDocument {
 
 export { newId };
 
-export function createRectangle(bounds: Bounds): RectangleElement {
+export function createShape(type: ShapeType, bounds: Bounds): CanvasElement {
   const timestamp = now();
-  return {
-    id: newId(), type: "rectangle", ...bounds, rotation: 0, groupIds: [], locked: false,
+  const shape: Omit<BaseShapeElement, "type"> = {
+    id: newId(), ...bounds, rotation: 0, groupIds: [], locked: false,
     hidden: false, opacity: 1, strokeColor: "#292724", strokeWidth: 2,
     strokeStyle: "solid", fillColor: "#f4eadf", fillStyle: "solid", roughness: 0,
-    cornerRadius: 10, boundTextId: null, createdAt: timestamp, updatedAt: timestamp,
+    boundTextId: null, createdAt: timestamp, updatedAt: timestamp,
   };
+  if (type === "rectangle") return { ...shape, type, cornerRadius: 10 };
+  if (type === "ellipse") return { ...shape, type };
+  return { ...shape, type };
 }
+
+export const createRectangle = (bounds: Bounds): RectangleElement => createShape("rectangle", bounds) as RectangleElement;

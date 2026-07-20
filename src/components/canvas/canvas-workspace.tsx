@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type PointerEvent as ReactPointerEvent } from "react";
 import type { Viewport } from "@/core/board/types";
-import type { Bounds, CanvasElement, Point } from "@/core/elements/types";
+import type { Bounds, CanvasElement, Point, ShapeType } from "@/core/elements/types";
 import { creationBounds, normalizeBounds, selectionBounds } from "@/core/geometry/bounds";
 import { elementsContainedByBounds, hitTestElements } from "@/core/geometry/hit-testing";
 import { screenToWorld } from "@/core/geometry/coordinates";
@@ -22,11 +22,13 @@ import { markInteraction, measurePerformance } from "@/features/performance/perf
 
 type Gesture =
   | { type: "pan"; pointerId: number; start: Point; viewport: Viewport }
-  | { type: "draw"; pointerId: number; origin: Point; current: Point; square: boolean; fromCenter: boolean }
+  | { type: "draw"; shapeType: ShapeType; pointerId: number; origin: Point; current: Point; square: boolean; fromCenter: boolean }
   | { type: "marquee"; pointerId: number; origin: Point; current: Point; additive: boolean }
   | { type: "move"; pointerId: number; origin: Point; current: Point; initial: CanvasElement[] }
   | { type: "resize"; pointerId: number; origin: Point; current: Point; handle: ResizeHandle; initialBounds: Bounds; initial: CanvasElement[]; preserveAspect: boolean; fromCenter: boolean }
   | null;
+
+const isShapeTool = (tool: string): tool is ShapeType => tool === "rectangle" || tool === "ellipse" || tool === "diamond";
 
 export function CanvasWorkspace() {
   const board = useBoardStore((s) => s.board); const viewport = useViewportStore((s) => s.viewport);
@@ -59,9 +61,10 @@ export function CanvasWorkspace() {
   const selectedBounds = selectionBounds(selectedElements);
   const current = gesture;
   const rawDraft = current?.type === "draw" ? creationBounds(current.origin, current.current, current.square, current.fromCenter) : null;
-  const draft = rawDraft && board?.preferences.snapToGrid ? snapBoundsToGrid(rawDraft, board.preferences.gridSize) : rawDraft;
+  const draftBounds = rawDraft && board?.preferences.snapToGrid ? snapBoundsToGrid(rawDraft, board.preferences.gridSize) : rawDraft;
+  const draftShape = current?.type === "draw" && draftBounds ? { type: current.shapeType, bounds: draftBounds } : null;
   const marquee = current?.type === "marquee" ? normalizeBounds(current.origin, current.current) : null;
-  const snapPreview = board?.preferences.snapToGrid && (current?.type === "draw" || current?.type === "move") ? (current.type === "draw" ? draft : selectedBounds) : null;
+  const snapPreview = board?.preferences.snapToGrid && (current?.type === "draw" || current?.type === "move") ? (current.type === "draw" ? draftBounds : selectedBounds) : null;
 
   const onPointerDown = (event: ReactPointerEvent<HTMLDivElement>) => {
     if (!board || event.button === 2) return;
@@ -72,7 +75,7 @@ export function CanvasWorkspace() {
     rootRef.current?.setPointerCapture(event.pointerId);
     if (event.button === 1 || activeTool === "hand" || spaceHeld) setGesture({ type: "pan", pointerId: event.pointerId, start: screen, viewport });
     else if (handle && selectedBounds) setGesture({ type: "resize", pointerId: event.pointerId, origin: world, current: world, handle, initialBounds: selectedBounds, initial: selectedElements, preserveAspect: event.shiftKey, fromCenter: event.altKey });
-    else if (activeTool === "rectangle") setGesture({ type: "draw", pointerId: event.pointerId, origin: world, current: world, square: event.shiftKey, fromCenter: event.altKey });
+    else if (isShapeTool(activeTool)) setGesture({ type: "draw", shapeType: activeTool, pointerId: event.pointerId, origin: world, current: world, square: event.shiftKey, fromCenter: event.altKey });
     else {
       const hit = measurePerformance("point-hit-test", ordered.length, () => hitTestElements(ordered, world, 6 / viewport.zoom));
       if (hit) {
@@ -101,7 +104,7 @@ export function CanvasWorkspace() {
       let bounds = creationBounds(current.origin, current.current, current.square, current.fromCenter);
       if (bounds.width < 4 && bounds.height < 4) bounds = { x: current.origin.x, y: current.origin.y, width: 160, height: 100 };
       if (board.preferences.snapToGrid) bounds = snapBoundsToGrid(bounds, board.preferences.gridSize);
-      if (bounds.width >= 16 && bounds.height >= 16) { const id = useBoardStore.getState().createRectangle(bounds); if (id) useSessionStore.getState().setSelected([id]); useSessionStore.getState().setTool("select"); }
+      if (bounds.width >= 16 && bounds.height >= 16) { const id = useBoardStore.getState().createShape(current.shapeType, bounds); if (id) useSessionStore.getState().setSelected([id]); useSessionStore.getState().setTool("select"); }
     } else if (current.type === "marquee") {
       const bounds = normalizeBounds(current.origin, current.current);
       const found = measurePerformance("marquee-select", ordered.length, () => elementsContainedByBounds(ordered, bounds)).map((element) => element.id);
@@ -124,6 +127,8 @@ export function CanvasWorkspace() {
       if (!mod && key === "v") useSessionStore.getState().setTool("select");
       else if (!mod && key === "h") useSessionStore.getState().setTool("hand");
       else if (!mod && key === "r") useSessionStore.getState().setTool("rectangle");
+      else if (!mod && key === "e") useSessionStore.getState().setTool("ellipse");
+      else if (!mod && key === "d") useSessionStore.getState().setTool("diamond");
       else if (event.key === "Escape") {
         if (gesture) { setGesture(null); if (gesture.type === "draw") useSessionStore.getState().setTool("select"); }
         else { useSessionStore.getState().setSelected([]); useSessionStore.getState().setTool("select"); }
@@ -151,11 +156,11 @@ export function CanvasWorkspace() {
   }, []);
 
   if (!board) return <div className="loading-canvas"><span /><p>Opening your draft…</p></div>;
-  const cursor = spaceHeld || activeTool === "hand" ? "grab" : activeTool === "rectangle" ? "crosshair" : "default";
+  const cursor = spaceHeld || activeTool === "hand" ? "grab" : isShapeTool(activeTool) ? "crosshair" : "default";
   return <main ref={rootRef} className="canvas-workspace" aria-label="Draftspace infinite canvas" data-tool={activeTool} data-board-ready="true" style={{ cursor }} onPointerDown={onPointerDown} onPointerMove={onPointerMove} onPointerUp={finishGesture} onPointerCancel={() => setGesture(null)} onWheel={(event) => { event.preventDefault(); markInteraction(ordered.length); const p = localPoint(event); if (classifyWheelGesture(event) === "zoom") useViewportStore.getState().zoomAt(p, viewport.zoom * Math.exp(-event.deltaY * .0015)); else useViewportStore.getState().panBy({ x: -event.deltaX, y: -event.deltaY }); }}>
-    <SceneCanvas board={board} viewport={viewport} elements={displayed} width={size.width} height={size.height} draftRectangle={draft} />
+    <SceneCanvas board={board} viewport={viewport} elements={displayed} width={size.width} height={size.height} draftShape={draftShape} />
     <InteractionOverlay bounds={selectedBounds} marquee={marquee} snapBounds={snapPreview} viewport={viewport} />
-    {!board.elementIds.length && !draft && <div className="empty-hint"><p>Start with a rectangle</p><span>Press <kbd>R</kbd>, then drag anywhere</span></div>}
+    {!board.elementIds.length && !draftShape && <div className="empty-hint"><p>Start with a shape</p><span>Press <kbd>R</kbd>, <kbd>E</kbd>, or <kbd>D</kbd>, then drag anywhere</span></div>}
     <ToolRail /><ViewportControls size={size} />
   </main>;
 }

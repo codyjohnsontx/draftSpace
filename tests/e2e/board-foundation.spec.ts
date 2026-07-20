@@ -7,6 +7,8 @@ test("explains every toolbar control consistently", async ({ page }, testInfo) =
     ["Select", "Select, move, and resize objects"],
     ["Hand", "Pan around the canvas"],
     ["Rectangle", "Draw a rectangle"],
+    ["Ellipse", "Draw an ellipse"],
+    ["Diamond", "Draw a diamond"],
     ["Tool lock", "Keep a drawing tool active"],
     ["Zoom out", "See more of the board"],
     ["Reset zoom to 100%", "Return to 100% zoom"],
@@ -54,7 +56,7 @@ test("creates, moves, undoes, and restores a rectangle", async ({ page }, testIn
   await page.mouse.move(260, 180); await page.mouse.down(); await page.mouse.move(460, 300); await page.mouse.up();
   await expect(page.getByRole("button", { name: "Undo" })).toBeEnabled();
   await page.keyboard.press(process.platform === "darwin" ? "Meta+z" : "Control+z");
-  await expect(page.getByText("Start with a rectangle")).toBeVisible();
+  await expect(page.getByText("Start with a shape")).toBeVisible();
   await page.keyboard.press(process.platform === "darwin" ? "Meta+Shift+z" : "Control+Shift+z");
   await page.mouse.click(700, 420);
   await expect.poll(() => page.locator("canvas").evaluate((canvas: HTMLCanvasElement) => {
@@ -66,7 +68,70 @@ test("creates, moves, undoes, and restores a rectangle", async ({ page }, testIn
   })).toEqual([244, 234, 223, 255]);
   await page.screenshot({ path: testInfo.outputPath("draftspace-phase1.png") });
   await page.waitForTimeout(700); await page.reload();
-  await expect(page.getByText("Start with a rectangle")).toHaveCount(0);
+  await expect(page.getByText("Start with a shape")).toHaveCount(0);
+});
+
+test("creates, selects, and restores ellipses and diamonds", async ({ page }) => {
+  await page.goto("/");
+  await expect(page.getByRole("main", { name: "Draftspace infinite canvas" })).toBeVisible();
+
+  await page.getByRole("button", { name: "Ellipse" }).click();
+  await expect(page.getByRole("button", { name: "Ellipse" })).toHaveAttribute("aria-pressed", "true");
+  await page.mouse.move(250, 170); await page.mouse.down(); await page.mouse.move(410, 290); await page.mouse.up();
+  await expect(page.getByRole("button", { name: "Select" })).toHaveAttribute("aria-pressed", "true");
+
+  await page.keyboard.press("d");
+  await expect(page.getByRole("button", { name: "Diamond" })).toHaveAttribute("aria-pressed", "true");
+  await page.mouse.move(500, 170); await page.mouse.down(); await page.mouse.move(660, 290); await page.mouse.up();
+  await expect(page.getByRole("button", { name: "Select" })).toHaveAttribute("aria-pressed", "true");
+
+  await page.mouse.click(520, 185);
+  await expect(page.locator("[data-resize-handle]")).toHaveCount(0);
+  await page.mouse.click(580, 230);
+  await expect(page.locator("[data-resize-handle]")).toHaveCount(8);
+  await page.keyboard.press("ArrowRight");
+  await page.keyboard.press("ControlOrMeta+c");
+  await page.keyboard.press("ControlOrMeta+v");
+  await page.keyboard.press("ControlOrMeta+z");
+  await page.keyboard.press("ControlOrMeta+Shift+z");
+
+  await page.waitForTimeout(800);
+  const storedTypes = await page.evaluate(async () => new Promise<string[]>((resolve, reject) => {
+    const id = localStorage.getItem("draftspace:last-board"); const request = indexedDB.open("draftspace");
+    request.onerror = () => reject(request.error); request.onsuccess = () => {
+      const database = request.result; const get = database.transaction("boards").objectStore("boards").get(id!);
+      get.onsuccess = () => { database.close(); resolve(get.result.elementIds.map((elementId: string) => get.result.elements[elementId].type)); };
+      get.onerror = () => { database.close(); reject(get.error); };
+    };
+  }));
+  expect(storedTypes).toEqual(["ellipse", "diamond", "diamond"]);
+  await page.reload();
+  await expect(page.getByText("Start with a shape")).toHaveCount(0);
+});
+
+test("migrates a version one rectangle board in place", async ({ page }) => {
+  await page.goto("/");
+  await expect(page.getByRole("main", { name: "Draftspace infinite canvas" })).toBeVisible();
+  await page.keyboard.press("r");
+  await page.mouse.move(260, 180); await page.mouse.down(); await page.mouse.move(420, 280); await page.mouse.up();
+  await page.waitForTimeout(800);
+  await page.evaluate(async () => new Promise<void>((resolve, reject) => {
+    const id = localStorage.getItem("draftspace:last-board"); const request = indexedDB.open("draftspace");
+    request.onerror = () => reject(request.error); request.onsuccess = () => {
+      const database = request.result; const transaction = database.transaction("boards", "readwrite"); const store = transaction.objectStore("boards"); const get = store.get(id!);
+      get.onsuccess = () => store.put({ ...get.result, schemaVersion: 1 });
+      transaction.oncomplete = () => { database.close(); resolve(); }; transaction.onerror = () => { database.close(); reject(transaction.error); };
+    };
+  }));
+  await page.reload();
+  await expect(page.getByRole("main", { name: "Draftspace infinite canvas" })).toBeVisible();
+  await expect.poll(() => page.evaluate(async () => new Promise<number>((resolve, reject) => {
+    const id = localStorage.getItem("draftspace:last-board"); const request = indexedDB.open("draftspace");
+    request.onerror = () => reject(request.error); request.onsuccess = () => {
+      const database = request.result; const get = database.transaction("boards").objectStore("boards").get(id!);
+      get.onsuccess = () => { database.close(); resolve(get.result.schemaVersion); }; get.onerror = () => { database.close(); reject(get.error); };
+    };
+  }))).toBe(2);
 });
 
 test("cancels drawing without changing history", async ({ page }) => {
@@ -75,7 +140,7 @@ test("cancels drawing without changing history", async ({ page }) => {
   await page.keyboard.press("r");
   await page.mouse.move(280, 220); await page.mouse.down(); await page.mouse.move(480, 340);
   await page.keyboard.press("Escape"); await page.mouse.up();
-  await expect(page.getByText("Start with a rectangle")).toBeVisible();
+  await expect(page.getByText("Start with a shape")).toBeVisible();
   await expect(page.getByRole("button", { name: "Undo" })).toBeDisabled();
 });
 
