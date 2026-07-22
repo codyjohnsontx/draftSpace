@@ -48,10 +48,6 @@ export class Room extends DurableObject<Env> {
 
   async webSocketMessage(socket: WebSocket, raw: string | ArrayBuffer) {
     if (typeof raw !== "string" || new TextEncoder().encode(raw).byteLength > numberEnv(this.env.ROOM_MAX_MESSAGE_BYTES, 5_242_880)) return this.error(socket, "invalid-message", "The room message was invalid.");
-    let parsed: unknown;
-    try { parsed = JSON.parse(raw); } catch { return this.error(socket, "invalid-json", "The room message was invalid."); }
-    const message = parseClientMessage(parsed);
-    if (!message) return this.error(socket, "invalid-message", "The room message was invalid.");
     let attachment = socket.deserializeAttachment() as Attachment;
     const receivedAt = Date.now();
     const windowStartedAt = attachment.messageWindowStartedAt ?? receivedAt;
@@ -59,6 +55,10 @@ export class Room extends DurableObject<Env> {
     attachment = { ...attachment, messageWindowStartedAt: receivedAt - windowStartedAt >= 1000 ? receivedAt : windowStartedAt, messageCount };
     socket.serializeAttachment(attachment);
     if (messageCount > 120) return this.error(socket, "rate-limited", "Too many room messages were sent at once.");
+    let parsed: unknown;
+    try { parsed = JSON.parse(raw); } catch { return this.error(socket, "invalid-json", "The room message was invalid."); }
+    const message = parseClientMessage(parsed);
+    if (!message) return this.error(socket, "invalid-message", "The room message was invalid.");
     const metadata = await this.getMetadata();
     if (!metadata) return this.send(socket, { type: "room.ended", reason: "host-timeout" });
 
@@ -66,7 +66,7 @@ export class Room extends DurableObject<Env> {
       if (attachment.authenticated) return;
       if (message.mode === "host") {
         if (!message.token || !await tokenMatchesHash(message.token, metadata.hostTokenHash)) return this.error(socket, "unauthorized", "The host token is invalid.");
-        this.connections().filter(({ socket: otherSocket, attachment: item }) => otherSocket !== socket && item.authenticated && item.role === "host" && item.participantId === message.profile.id).forEach(({ socket: otherSocket, attachment: item }) => {
+        this.connections().filter(({ socket: otherSocket, attachment: item }) => otherSocket !== socket && item.authenticated && item.role === "host").forEach(({ socket: otherSocket, attachment: item }) => {
           otherSocket.serializeAttachment({ ...item, superseded: true });
           otherSocket.close(4001, "Reconnected elsewhere");
         });
@@ -126,6 +126,7 @@ export class Room extends DurableObject<Env> {
     }
     if (message.type === "command.accept") {
       if (attachment.role !== "host") return this.error(socket, "forbidden", "Only the host can accept edits.");
+      if (message.proposal.baseRevision !== metadata.roomRevision) return this.error(socket, "stale-revision", "The edit was based on an outdated room revision.");
       metadata.roomRevision += 1; await this.save(metadata);
       return this.broadcast({ type: "command.accept", participantId: message.participantId, proposal: message.proposal, roomRevision: metadata.roomRevision, appliedAt: new Date().toISOString() });
     }

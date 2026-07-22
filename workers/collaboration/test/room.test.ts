@@ -34,6 +34,21 @@ function nextMessage(socket: WebSocket, type: ServerMessage["type"]): Promise<Se
 
 function send(socket: WebSocket, message: ClientMessage) { socket.send(JSON.stringify(message)); }
 
+function collectErrors(socket: WebSocket, count: number): Promise<Array<Extract<ServerMessage, { type: "error" }>>> {
+  return new Promise((resolve, reject) => {
+    const errors: Array<Extract<ServerMessage, { type: "error" }>> = [];
+    const timeout = setTimeout(() => { socket.removeEventListener("message", listener); reject(new Error(`Timed out waiting for ${count} errors`)); }, 2000);
+    const listener = (event: MessageEvent) => {
+      const message = JSON.parse(String(event.data)) as ServerMessage;
+      if (message.type !== "error") return;
+      errors.push(message);
+      if (errors.length !== count) return;
+      clearTimeout(timeout); socket.removeEventListener("message", listener); resolve(errors);
+    };
+    socket.addEventListener("message", listener);
+  });
+}
+
 describe("collaboration room worker", () => {
   it("uses safe numeric defaults for blank and invalid configuration", () => {
     expect(numberEnv(undefined, 100)).toBe(100);
@@ -94,12 +109,18 @@ describe("collaboration room worker", () => {
     send(host, { type: "command.accept", participantId: request.participant.participantId, proposal });
     const result = await accepted; expect(result.type === "command.accept" && result.roomRevision).toBe(1);
 
+    const staleRevision = nextMessage(host, "error");
+    send(host, { type: "command.accept", participantId: request.participant.participantId, proposal });
+    const staleResult = await staleRevision;
+    expect(staleResult.type === "error" && staleResult.code).toBe("stale-revision");
+
     const kicked = nextMessage(guest, "participant.kicked"); send(host, { type: "host.kick", participantId: request.participant.participantId });
     expect((await kicked).type).toBe("participant.kicked");
     const stub = env.ROOMS.get(env.ROOMS.idFromName(created.code));
     await runInDurableObject(stub, async (_instance: Room, state) => {
-      const metadata = await state.storage.get<{ participants: unknown[] }>("metadata");
+      const metadata = await state.storage.get<{ participants: unknown[]; roomRevision: number }>("metadata");
       expect(metadata?.participants).toEqual([]);
+      expect(metadata?.roomRevision).toBe(1);
     });
     host.close();
   });
@@ -120,12 +141,23 @@ describe("collaboration room worker", () => {
     const replacementAck = nextMessage(replacementHost, "hello.ack");
     const replayedRequest = nextMessage(replacementHost, "join.request");
     const originalClosed = new Promise<void>((resolve) => originalHost.addEventListener("close", () => resolve(), { once: true }));
-    send(replacementHost, { type: "hello", protocolVersion: 1, mode: "host", token: created.hostToken, profile: { id: "host-profile", displayName: "Cody", color: "#b85f3f" } });
+    send(replacementHost, { type: "hello", protocolVersion: 1, mode: "host", token: created.hostToken, profile: { id: "replacement-host-profile", displayName: "Cody", color: "#b85f3f" } });
 
     expect((await replacementAck).type).toBe("hello.ack");
     expect((await replayedRequest).type).toBe("join.request");
     await originalClosed;
     replacementHost.close(); guest.close();
+  });
+
+  it("rate limits invalid frames before parsing their contents", async () => {
+    const created = await createRoom();
+    const socket = await openSocket(created.code);
+    const errors = collectErrors(socket, 121);
+    for (let attempt = 0; attempt < 121; attempt += 1) socket.send("{");
+    const results = await errors;
+    expect(results.slice(0, 120).every((message) => message.code === "invalid-json")).toBe(true);
+    expect(results[120]?.code).toBe("rate-limited");
+    socket.close();
   });
 
   it("rate limits room creation by request identity", async () => {
