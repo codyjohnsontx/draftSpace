@@ -36,7 +36,7 @@ export function ColorControl({ label, value, allowNone, recentColors, onSelect, 
       <label className="custom-color">
         <Pipette size={14} aria-hidden="true" />
         <span className="sr-only">Custom {lowerLabel} color</span>
-        <input type="color" aria-label={`Custom ${lowerLabel} color`} value={customValue} onInput={(event) => onPreview(event.currentTarget.value)} onChange={(event) => onCommit(event.currentTarget.value)} onBlur={(event) => onCommit(event.currentTarget.value)} onKeyDown={handleKeyDown} />
+        <input type="color" aria-label={`Custom ${lowerLabel} color`} value={customValue} onInput={(event) => onPreview(event.currentTarget.value)} onBlur={(event) => onCommit(event.currentTarget.value)} onKeyDown={handleKeyDown} />
       </label>
     </div>
   </fieldset>;

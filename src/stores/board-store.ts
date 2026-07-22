@@ -22,6 +22,15 @@ type BoardStore = {
   redo: () => void;
 };
 
+function elementStyleWouldChange(element: CanvasElement, patch: ShapeStylePatch): boolean {
+  return (patch.fillColor !== undefined && element.fillColor !== patch.fillColor)
+    || (patch.strokeColor !== undefined && element.strokeColor !== patch.strokeColor)
+    || (patch.strokeWidth !== undefined && element.strokeWidth !== patch.strokeWidth)
+    || (patch.strokeStyle !== undefined && element.strokeStyle !== patch.strokeStyle)
+    || (patch.opacity !== undefined && element.opacity !== patch.opacity)
+    || (patch.cornerRadius !== undefined && element.type === "rectangle" && element.cornerRadius !== patch.cornerRadius);
+}
+
 export const useBoardStore = create<BoardStore>((set, get) => ({
   board: null,
   history: emptyHistory(),
@@ -54,18 +63,25 @@ export const useBoardStore = create<BoardStore>((set, get) => ({
     get().commit("Paste", (draft) => copies.forEach((copy) => { draft.elementIds.push(copy.id); draft.elements[copy.id] = copy; }));
     return copies.map((copy) => copy.id);
   },
-  applyElementStyles: (ids, patch, label = "Change shape style") => get().commit(label, (board) => {
-    ids.forEach((id) => {
+  applyElementStyles: (ids, patch, label = "Change shape style") => {
+    const board = get().board;
+    if (!board || !ids.some((id) => {
       const element = board.elements[id];
-      if (!element) return;
-      if (patch.fillColor !== undefined) element.fillColor = patch.fillColor;
-      if (patch.strokeColor !== undefined) element.strokeColor = patch.strokeColor;
-      if (patch.strokeWidth !== undefined) element.strokeWidth = patch.strokeWidth;
-      if (patch.strokeStyle !== undefined) element.strokeStyle = patch.strokeStyle;
-      if (patch.opacity !== undefined) element.opacity = patch.opacity;
-      if (patch.cornerRadius !== undefined && element.type === "rectangle") element.cornerRadius = patch.cornerRadius;
+      return element ? elementStyleWouldChange(element, patch) : false;
+    })) return;
+    get().commit(label, (draft) => {
+      ids.forEach((id) => {
+        const element = draft.elements[id];
+        if (!element) return;
+        if (patch.fillColor !== undefined) element.fillColor = patch.fillColor;
+        if (patch.strokeColor !== undefined) element.strokeColor = patch.strokeColor;
+        if (patch.strokeWidth !== undefined) element.strokeWidth = patch.strokeWidth;
+        if (patch.strokeStyle !== undefined) element.strokeStyle = patch.strokeStyle;
+        if (patch.opacity !== undefined) element.opacity = patch.opacity;
+        if (patch.cornerRadius !== undefined && element.type === "rectangle") element.cornerRadius = patch.cornerRadius;
+      });
     });
-  }),
+  },
   rename: (name) => get().commit("Rename board", (board) => { board.name = name.trim() || "Untitled board"; }),
   persistViewport: (viewport) => {
     const { board, revision } = get();

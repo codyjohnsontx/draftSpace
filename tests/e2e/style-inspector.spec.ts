@@ -49,10 +49,7 @@ test("styles a selected shape with one-entry continuous edits", async ({ page },
   await page.mouse.move(800, 400);
   await page.screenshot({ path: testInfo.outputPath("style-inspector-floating.png") });
 
-  await page.waitForTimeout(800);
-  const elements = await readStoredElements(page);
-  const element = Object.values(elements)[0];
-  expect(element).toMatchObject({ fillColor: "#4f6fa8", strokeColor: "#7b5f86", strokeWidth: 4, strokeStyle: "dotted", opacity: .45, cornerRadius: 36 });
+  await expect.poll(async () => Object.values(await readStoredElements(page))[0]).toMatchObject({ fillColor: "#4f6fa8", strokeColor: "#7b5f86", strokeWidth: 4, strokeStyle: "dotted", opacity: .45, cornerRadius: 36 });
   await page.reload();
   await page.mouse.click(350, 240);
   await expect(page.getByRole("button", { name: "Set fill to Blue" })).toHaveAttribute("aria-pressed", "true");
@@ -127,13 +124,13 @@ test("handles mixed selections, rectangle-only corners, and recent custom colors
   await page.mouse.move(430, 180); await page.mouse.down(); await page.mouse.move(590, 280); await page.mouse.up();
 
   const customFill = page.getByLabel("Custom fill color");
+  await customFill.focus();
   await customFill.evaluate((element) => {
     const input = element as HTMLInputElement;
     Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value")!.set!.call(input, "#123456");
     input.dispatchEvent(new Event("input", { bubbles: true }));
   });
   await page.evaluate(() => new Promise(requestAnimationFrame));
-  await customFill.dispatchEvent("change");
   await customFill.blur();
   await page.keyboard.down("Shift"); await page.mouse.click(250, 230); await page.keyboard.up("Shift");
   await expect(page.getByText("2 mixed shapes")).toBeVisible();
@@ -143,11 +140,14 @@ test("handles mixed selections, rectangle-only corners, and recent custom colors
   await expect(page.getByText("Rectangles only")).toBeVisible();
   await expect(page.getByRole("button", { name: "Set fill to recent color #123456" })).toBeVisible();
 
-  await page.waitForTimeout(800);
-  const elements = Object.values(await readStoredElements(page));
-  expect(elements.map((element) => element.strokeWidth)).toEqual([8, 8]);
-  expect(elements.find((element) => element.type === "rectangle")?.cornerRadius).toBe(42);
-  expect(elements.find((element) => element.type === "ellipse")).not.toHaveProperty("cornerRadius");
+  await expect.poll(async () => {
+    const elements = Object.values(await readStoredElements(page));
+    return {
+      strokeWidths: elements.map((element) => element.strokeWidth),
+      rectangleCornerRadius: elements.find((element) => element.type === "rectangle")?.cornerRadius,
+      ellipseHasCornerRadius: Object.hasOwn(elements.find((element) => element.type === "ellipse") ?? {}, "cornerRadius"),
+    };
+  }).toEqual({ strokeWidths: [8, 8], rectangleCornerRadius: 42, ellipseHasCornerRadius: false });
   expect(await page.evaluate(() => {
     const preference = JSON.parse(localStorage.getItem("draftspace:inspector-preferences")!);
     return { recentColors: preference.recentColors, boardPreferenceLeak: Object.values(preference).some((value) => value === "draftspace/board") };

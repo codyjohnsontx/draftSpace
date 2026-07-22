@@ -110,13 +110,17 @@ describe("style history", () => {
     expect(useBoardStore.getState().board?.elements[rectangle.id].fillColor).toBe("#4f6fa8");
   });
 
-  it("does not create history for a no-op or without a board", () => {
+  it("does not create history for inapplicable style changes or without a board", () => {
     useBoardStore.getState().applyElementStyles(["missing"], { opacity: .5 });
     expect(useBoardStore.getState().history.undo).toHaveLength(0);
-    const { board, rectangle } = boardWithShapes();
+    const { board, rectangle, ellipse } = boardWithShapes();
     useBoardStore.getState().setBoard(board);
+    useBoardStore.getState().applyElementStyles([rectangle.id], {});
+    useBoardStore.getState().applyElementStyles(["missing"], { opacity: .5 });
+    useBoardStore.getState().applyElementStyles([ellipse.id], { cornerRadius: 20 });
     useBoardStore.getState().applyElementStyles([rectangle.id], { opacity: 1 });
     expect(useBoardStore.getState().history.undo).toHaveLength(0);
+    expect(useBoardStore.getState().revision).toBe(0);
   });
 });
 
