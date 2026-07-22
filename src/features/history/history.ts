@@ -1,15 +1,16 @@
 import { applyPatches, enablePatches, produceWithPatches, type Patch } from "immer";
 import type { BoardDocument } from "@/core/board/types";
+import type { BoardCommand, BoardCommandMetadata } from "@/core/commands/board-command";
 
 enablePatches();
 
-export type HistoryEntry = { label: string; forward: Patch[]; inverse: Patch[] };
+export type HistoryEntry = { label: string; forward: Patch[]; inverse: Patch[]; command?: BoardCommand; inverseCommand?: BoardCommand; redoCommand?: BoardCommand; metadata?: BoardCommandMetadata };
 export type HistoryState = { undo: HistoryEntry[]; redo: HistoryEntry[] };
 export const emptyHistory = (): HistoryState => ({ undo: [], redo: [] });
 
-export function transact(board: BoardDocument, label: string, recipe: (draft: BoardDocument) => void) {
+export function transact(board: BoardDocument, label: string, recipe: (draft: BoardDocument) => void, command?: BoardCommand, metadata?: BoardCommandMetadata): { next: BoardDocument; entry: HistoryEntry | null } {
   const [next, forward, inverse] = produceWithPatches(board, recipe);
-  return { next, entry: forward.length ? { label, forward, inverse } : null };
+  return { next, entry: forward.length ? { label, forward, inverse, command, metadata } : null };
 }
 
 export function pushHistory(history: HistoryState, entry: HistoryEntry, max = 100): HistoryState {

@@ -2,6 +2,10 @@
   "name": "draftspace",
   "version": "0.1.0",
   "private": true,
+  "workspaces": [
+    "packages/*",
+    "workers/*"
+  ],
   "scripts": {
     "dev": "next dev",
     "build": "next build",
@@ -12,9 +16,14 @@
     "test:watch": "vitest",
     "test:e2e": "playwright test",
     "test:e2e:chromium": "playwright test --project=chromium",
-    "test:performance": "playwright test --config=playwright.performance.config.ts"
+    "test:performance": "playwright test --config=playwright.performance.config.ts",
+    "test:collaboration": "playwright test --config=playwright.collaboration.config.ts",
+    "collaboration:dev": "npm run dev --workspace=@draftspace/collaboration-worker",
+    "collaboration:test": "npm run test --workspace=@draftspace/collaboration-worker",
+    "collaboration:typecheck": "npm run typecheck --workspace=@draftspace/collaboration-worker"
   },
   "dependencies": {
+    "@draftspace/collaboration-protocol": "*",
     "idb": "latest",
     "immer": "latest",
     "lucide-react": "latest",
@@ -25,6 +34,8 @@
     "zustand": "latest"
   },
   "devDependencies": {
+    "@cloudflare/vitest-pool-workers": "^0.18.7",
+    "@cloudflare/workers-types": "^5.20260722.1",
     "@playwright/test": "latest",
     "@tailwindcss/postcss": "latest",
     "@testing-library/jest-dom": "latest",
@@ -38,6 +49,7 @@
     "jsdom": "latest",
     "tailwindcss": "latest",
     "typescript": "latest",
-    "vitest": "latest"
+    "vitest": "latest",
+    "wrangler": "^4.113.0"
   }
 }

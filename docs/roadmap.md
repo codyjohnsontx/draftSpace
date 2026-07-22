@@ -85,6 +85,23 @@ This roadmap favors interaction trust over feature count. Draftspace should earn
 
 **Follow-up:** Add reusable recent-shape presets so a user can create a copy of a previous shape’s type, dimensions, and style with one action. Define preset persistence, retention, naming, and placement behavior as a separate slice.
 
+## Phase 2.1C — Temporary live rooms
+
+**Goal:** Let a local-first user briefly invite trusted guests into the current board without turning Draftspace into an account-first cloud product.
+
+- [x] Host-created 10-character room codes and approval lobby
+- [x] Viewer/editor roles, removal, and a four-person room cap
+- [x] Live cursors, selections, active tools, and optional follow-host viewport
+- [x] Host-authoritative typed commands, revisions, validation, and snapshot recovery
+- [x] Personal conditional undo that preserves later edits from other participants
+- [x] Guest reconnect tokens and a 60-second read-only host grace period
+- [x] Ephemeral Cloudflare Durable Object relay with no persisted board content
+- [x] Chromium, Firefox, and WebKit host/guest smoke coverage
+
+**Acceptance:** A host can approve up to three guests, change their roles, and end the room. Admitted editors see accepted edits live; viewers cannot mutate the board. Presence never enters board history or persistence. Host loss makes guests read-only and either recovers from a fresh snapshot or ends the room after 60 seconds. The host's local IndexedDB document remains the only durable board copy.
+
+**Availability gate:** The implementation is enabled in development and cross-browser CI, but production exposure remains behind `NEXT_PUBLIC_COLLABORATION_ENABLED=1` until straight lines and rotation complete Phase 2.1B.
+
 ## Phase 2.2 — Text, notes, and freehand
 
 **Goal:** Support brainstorming, annotation, and low-fidelity interface work.
@@ -128,4 +145,4 @@ This roadmap favors interaction trust over feature count. Draftspace should earn
 
 ## Future platform work
 
-Authentication, cloud sync, collaboration, comments, public links, templates, mobile editing, image uploads, presentation mode, and AI-assisted diagramming remain postponed until the manual local canvas is dependable and portable.
+Authentication, durable cloud sync, asynchronous sharing, comments, public links, templates, mobile editing, image uploads, presentation mode, and AI-assisted diagramming remain postponed. Temporary host-led live rooms are intentionally narrower: they require an active host and do not create a cloud board copy.
