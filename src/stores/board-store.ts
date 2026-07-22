@@ -1,6 +1,6 @@
 import { create } from "zustand";
 import type { BoardDocument } from "@/core/board/types";
-import type { Bounds, CanvasElement, ShapeType } from "@/core/elements/types";
+import type { Bounds, CanvasElement, ShapeStylePatch, ShapeType } from "@/core/elements/types";
 import type { Viewport } from "@/core/board/types";
 import { createBoard, createShape, newId, now } from "@/core/board/factory";
 import { emptyHistory, pushHistory, redoBoard, transact, undoBoard, type HistoryState } from "@/features/history/history";
@@ -15,6 +15,7 @@ type BoardStore = {
   deleteElements: (ids: string[]) => void;
   duplicateElements: (ids: string[]) => string[];
   pasteElements: (elements: CanvasElement[]) => string[];
+  applyElementStyles: (ids: readonly string[], patch: ShapeStylePatch, label?: string) => void;
   rename: (name: string) => void;
   persistViewport: (viewport: Viewport) => void;
   undo: () => void;
@@ -53,6 +54,18 @@ export const useBoardStore = create<BoardStore>((set, get) => ({
     get().commit("Paste", (draft) => copies.forEach((copy) => { draft.elementIds.push(copy.id); draft.elements[copy.id] = copy; }));
     return copies.map((copy) => copy.id);
   },
+  applyElementStyles: (ids, patch, label = "Change shape style") => get().commit(label, (board) => {
+    ids.forEach((id) => {
+      const element = board.elements[id];
+      if (!element) return;
+      if (patch.fillColor !== undefined) element.fillColor = patch.fillColor;
+      if (patch.strokeColor !== undefined) element.strokeColor = patch.strokeColor;
+      if (patch.strokeWidth !== undefined) element.strokeWidth = patch.strokeWidth;
+      if (patch.strokeStyle !== undefined) element.strokeStyle = patch.strokeStyle;
+      if (patch.opacity !== undefined) element.opacity = patch.opacity;
+      if (patch.cornerRadius !== undefined && element.type === "rectangle") element.cornerRadius = patch.cornerRadius;
+    });
+  }),
   rename: (name) => get().commit("Rename board", (board) => { board.name = name.trim() || "Untitled board"; }),
   persistViewport: (viewport) => {
     const { board, revision } = get();
