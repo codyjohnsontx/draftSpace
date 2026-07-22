@@ -16,7 +16,19 @@ Inspector layout and recent colors are application preferences stored under a va
 
 ## History
 
-Meaningful operations generate Immer forward and inverse patches. The history manager stores at most 100 logical entries. A discrete style choice is one operation; continuous opacity, corner, and custom-color input is previewed in session state and becomes one operation on completion. Viewport motion, hover, menus, application preferences, and intermediate gesture or style frames are excluded.
+Meaningful operations enter the board through validated typed commands, which also generate Immer forward and inverse patches. The history manager stores at most 100 logical entries. A discrete style choice is one operation; continuous opacity, corner, and custom-color input is previewed in session state and becomes one operation on completion. Viewport motion, hover, menus, application preferences, and intermediate gesture or style frames are excluded.
+
+In a live room, undo is personal. Each entry carries an actor ID and a derived inverse command. Undo searches for that actor's latest entry and includes expected values for every field it reverses. A field changed by another participant no longer matches and is left alone, while compatible fields from the same operation still revert. The inverse command travels through the same host-authoritative path as any other edit.
+
+## Live collaboration
+
+Normal sessions remain entirely local and open no collaboration connection. Starting or joining a room creates non-persistent session state beside the board, session, viewport, and persistence stores. The shared protocol package defines profiles, presence, commands, snapshots, roles, and lifecycle messages used by both the browser and the Cloudflare Worker.
+
+The host's validated in-memory board is authoritative and remains the only copy written to IndexedDB. Editors apply local commands optimistically, then send them one at a time against the latest acknowledged room revision. The host checks the board ID and base revision, validates the command, applies it, and asks the relay to publish the accepted revision. Rejected or stale edits recover from a fresh host snapshot. Guests never write shared board content to their own IndexedDB.
+
+Presence is deliberately separate from document state and history. Cursor position, selection IDs/count, active tool, and an optional presenting viewport are throttled, relayed, and discarded when connections close. Viewers can select, pan, zoom, and follow the host, but the board store's local-command authorization boundary prevents them from mutating documents even if a UI control is triggered programmatically.
+
+Each room is a Cloudflare Durable Object. It stores only room metadata: a room identifier, hashed host and reconnect tokens, participant roles, the authoritative revision number, and host-disconnect timing. Board snapshots and commands are relayed in memory and never written by the worker. A disconnected host has a 60-second grace period; guests become read-only until the host returns, then the room ends if the Durable Object alarm expires. See [`collaboration.md`](collaboration.md) for the protocol, threat boundary, deployment settings, and reproduction commands.
 
 ## Persistence
 

@@ -3,32 +3,84 @@ import type { BoardDocument } from "@/core/board/types";
 import type { Bounds, CanvasElement, ShapeStylePatch, ShapeType } from "@/core/elements/types";
 import type { Viewport } from "@/core/board/types";
 import { createBoard, createShape, newId, now } from "@/core/board/factory";
-import { emptyHistory, pushHistory, redoBoard, transact, undoBoard, type HistoryState } from "@/features/history/history";
+import { emptyHistory, transact, type HistoryEntry, type HistoryState } from "@/features/history/history";
+import { applyBoardCommand } from "@/core/commands/apply-board-command";
+import { canDispatchLocalCommands, getLocalActorId, localCommandMetadata, type BoardCommand, type BoardCommandIntent, type BoardCommandMetadata, type BoardUpdatePatch, type ElementMutablePatch } from "@/core/commands/board-command";
+import type { Patch } from "immer";
+
+export type DispatchedBoardCommand = { command: BoardCommand; metadata: BoardCommandMetadata; forward: Patch[]; inverse: Patch[]; revision: number };
+export type BoardCommandEvent = DispatchedBoardCommand & { origin: "local" | "remote" };
+const commandObservers = new Set<(event: BoardCommandEvent) => void>();
+export const subscribeToBoardCommands = (observer: (event: BoardCommandEvent) => void) => { commandObservers.add(observer); return () => commandObservers.delete(observer); };
 
 type BoardStore = {
   board: BoardDocument | null;
   history: HistoryState;
   revision: number;
   setBoard: (board: BoardDocument) => void;
-  commit: (label: string, recipe: (draft: BoardDocument) => void) => void;
+  dispatchCommand: (command: BoardCommand, metadata: BoardCommandMetadata, origin?: "local" | "remote", recordHistory?: boolean) => DispatchedBoardCommand | null;
   createShape: (type: ShapeType, bounds: Bounds) => string | null;
   deleteElements: (ids: string[]) => void;
   duplicateElements: (ids: string[]) => string[];
   pasteElements: (elements: CanvasElement[]) => string[];
   applyElementStyles: (ids: readonly string[], patch: ShapeStylePatch, label?: string) => void;
+  updateElements: (updates: Array<{ elementId: string; patch: ElementMutablePatch }>, label: string, intent: BoardCommandIntent) => void;
+  updateBoard: (patch: Extract<BoardCommand, { type: "board.update" }>["patch"], label: string) => void;
   rename: (name: string) => void;
   persistViewport: (viewport: Viewport) => void;
-  undo: () => void;
-  redo: () => void;
+  undo: (actorId?: string) => void;
+  redo: (actorId?: string) => void;
 };
 
-function elementStyleWouldChange(element: CanvasElement, patch: ShapeStylePatch): boolean {
-  return (patch.fillColor !== undefined && element.fillColor !== patch.fillColor)
-    || (patch.strokeColor !== undefined && element.strokeColor !== patch.strokeColor)
-    || (patch.strokeWidth !== undefined && element.strokeWidth !== patch.strokeWidth)
-    || (patch.strokeStyle !== undefined && element.strokeStyle !== patch.strokeStyle)
-    || (patch.opacity !== undefined && element.opacity !== patch.opacity)
-    || (patch.cornerRadius !== undefined && element.type === "rectangle" && element.cornerRadius !== patch.cornerRadius);
+function pickElementPatch(element: CanvasElement, patch: ElementMutablePatch): ElementMutablePatch {
+  const result: Record<string, unknown> = {};
+  Object.keys(patch).forEach((key) => { result[key] = (element as unknown as Record<string, unknown>)[key]; });
+  return result as ElementMutablePatch;
+}
+
+function inverseBoardPatch(board: BoardDocument, patch: BoardUpdatePatch): BoardUpdatePatch {
+  return {
+    ...(patch.name !== undefined ? { name: board.name } : {}),
+    ...(patch.preferences ? { preferences: Object.fromEntries(Object.keys(patch.preferences).map((key) => [key, board.preferences[key as keyof BoardDocument["preferences"]]])) } : {}),
+  };
+}
+
+function createInverseCommand(board: BoardDocument, command: BoardCommand): BoardCommand {
+  if (command.type === "elements.create") return { type: "elements.delete", elementIds: command.elements.map((element) => element.id), expectedElements: Object.fromEntries(command.elements.map((element) => [element.id, element])) };
+  if (command.type === "elements.delete") {
+    const elements = command.elementIds.flatMap((id) => board.elements[id] ? [board.elements[id]] : []);
+    return { type: "elements.create", elements, insertionIndexes: elements.map((element) => board.elementIds.indexOf(element.id)) };
+  }
+  if (command.type === "elements.update") return { type: "elements.update", updates: command.updates.flatMap(({ elementId, patch }) => {
+    const element = board.elements[elementId];
+    return element ? [{ elementId, patch: pickElementPatch(element, patch), expected: patch }] : [];
+  }) };
+  return { type: "board.update", patch: inverseBoardPatch(board, command.patch), expected: command.patch };
+}
+
+function createRedoCommand(command: BoardCommand, inverse: BoardCommand): BoardCommand {
+  if (command.type === "elements.delete") {
+    const restored = inverse.type === "elements.create" ? inverse.elements : [];
+    return { ...command, expectedElements: Object.fromEntries(restored.map((element) => [element.id, element])) };
+  }
+  if (command.type === "elements.update" && inverse.type === "elements.update") {
+    const expected = new Map(inverse.updates.map((update) => [update.elementId, update.patch]));
+    return { ...command, updates: command.updates.map((update) => ({ ...update, expected: expected.get(update.elementId) })) };
+  }
+  if (command.type === "board.update" && inverse.type === "board.update") return { ...command, expected: inverse.patch };
+  return command;
+}
+
+function actorEntryIndex(entries: HistoryEntry[], actorId: string): number {
+  for (let index = entries.length - 1; index >= 0; index -= 1) if (entries[index].metadata?.actorId === actorId) return index;
+  return -1;
+}
+
+function pushActorHistory(history: HistoryState, entry: HistoryEntry, max = 100): HistoryState {
+  return {
+    undo: [...history.undo, entry].slice(-max),
+    redo: history.redo.filter((redoEntry) => redoEntry.metadata?.actorId !== entry.metadata?.actorId),
+  };
 }
 
 export const useBoardStore = create<BoardStore>((set, get) => ({
@@ -36,61 +88,63 @@ export const useBoardStore = create<BoardStore>((set, get) => ({
   history: emptyHistory(),
   revision: 0,
   setBoard: (board) => set({ board, history: emptyHistory(), revision: 0 }),
-  commit: (label, recipe) => {
+  dispatchCommand: (command, metadata, origin = "local", recordHistory = true) => {
     const { board, history, revision } = get();
-    if (!board) return;
-    const { next, entry } = transact(board, label, (draft) => { recipe(draft); draft.updatedAt = now(); });
-    if (entry) set({ board: next, history: pushHistory(history, entry), revision: revision + 1 });
+    if (!board || (origin === "local" && !canDispatchLocalCommands())) return null;
+    const inverse = createInverseCommand(board, command);
+    const { next, entry } = transact(board, metadata.label, (draft) => { if (applyBoardCommand(draft, command)) draft.updatedAt = now(); }, command, metadata);
+    if (!entry) return null;
+    entry.inverseCommand = inverse;
+    entry.redoCommand = createRedoCommand(command, inverse);
+    const nextRevision = revision + 1;
+    set({ board: next, history: recordHistory ? pushActorHistory(history, entry) : history, revision: nextRevision });
+    const dispatched = { command, metadata, forward: entry.forward, inverse: entry.inverse, revision: nextRevision };
+    commandObservers.forEach((observer) => observer({ ...dispatched, origin }));
+    return dispatched;
   },
   createShape: (type, bounds) => {
     if (!get().board) return null;
     const element = createShape(type, bounds);
-    get().commit(`Create ${type}`, (board) => { board.elementIds.push(element.id); board.elements[element.id] = element; });
-    return element.id;
+    return get().dispatchCommand({ type: "elements.create", elements: [element] }, localCommandMetadata(`Create ${type}`, "create")) ? element.id : null;
   },
-  deleteElements: (ids) => get().commit("Delete selection", (board) => {
-    const deleted = new Set(ids); board.elementIds = board.elementIds.filter((id) => !deleted.has(id));
-    ids.forEach((id) => { delete board.elements[id]; });
-  }),
+  deleteElements: (ids) => { get().dispatchCommand({ type: "elements.delete", elementIds: ids }, localCommandMetadata("Delete selection", "delete")); },
   duplicateElements: (ids) => {
     const board = get().board; if (!board) return [];
     const copies = ids.map((id) => board.elements[id]).filter(Boolean).map((source) => ({ ...source, id: newId(), x: source.x + 20, y: source.y + 20, createdAt: now(), updatedAt: now() }));
-    get().commit("Duplicate selection", (draft) => copies.forEach((copy) => { draft.elementIds.push(copy.id); draft.elements[copy.id] = copy; }));
-    return copies.map((copy) => copy.id);
+    return get().dispatchCommand({ type: "elements.create", elements: copies }, localCommandMetadata("Duplicate selection", "duplicate")) ? copies.map((copy) => copy.id) : [];
   },
   pasteElements: (elements) => {
     const copies = elements.map((source) => ({ ...source, id: newId(), x: source.x + 20, y: source.y + 20, createdAt: now(), updatedAt: now() }));
-    get().commit("Paste", (draft) => copies.forEach((copy) => { draft.elementIds.push(copy.id); draft.elements[copy.id] = copy; }));
-    return copies.map((copy) => copy.id);
+    return get().dispatchCommand({ type: "elements.create", elements: copies }, localCommandMetadata("Paste", "paste")) ? copies.map((copy) => copy.id) : [];
   },
   applyElementStyles: (ids, patch, label = "Change shape style") => {
-    const board = get().board;
-    if (!board || !ids.some((id) => {
-      const element = board.elements[id];
-      return element ? elementStyleWouldChange(element, patch) : false;
-    })) return;
-    get().commit(label, (draft) => {
-      ids.forEach((id) => {
-        const element = draft.elements[id];
-        if (!element) return;
-        if (patch.fillColor !== undefined) element.fillColor = patch.fillColor;
-        if (patch.strokeColor !== undefined) element.strokeColor = patch.strokeColor;
-        if (patch.strokeWidth !== undefined) element.strokeWidth = patch.strokeWidth;
-        if (patch.strokeStyle !== undefined) element.strokeStyle = patch.strokeStyle;
-        if (patch.opacity !== undefined) element.opacity = patch.opacity;
-        if (patch.cornerRadius !== undefined && element.type === "rectangle") element.cornerRadius = patch.cornerRadius;
-      });
-    });
+    get().updateElements(ids.map((elementId) => ({ elementId, patch })), label, "style");
   },
-  rename: (name) => get().commit("Rename board", (board) => { board.name = name.trim() || "Untitled board"; }),
+  updateElements: (updates, label, intent) => { get().dispatchCommand({ type: "elements.update", updates }, localCommandMetadata(label, intent)); },
+  updateBoard: (patch, label) => { get().dispatchCommand({ type: "board.update", patch }, localCommandMetadata(label, patch.name === undefined ? "preferences" : "rename")); },
+  rename: (name) => { get().updateBoard({ name }, "Rename board"); },
   persistViewport: (viewport) => {
     const { board, revision } = get();
     if (!board || !board.preferences.restoreViewport) return;
     if (board.viewport.x === viewport.x && board.viewport.y === viewport.y && board.viewport.zoom === viewport.zoom) return;
     set({ board: { ...board, viewport, updatedAt: now() }, revision: revision + 1 });
   },
-  undo: () => { const { board, history, revision } = get(); if (!board) return; const result = undoBoard(board, history); set({ ...result, revision: result.board === board ? revision : revision + 1 }); },
-  redo: () => { const { board, history, revision } = get(); if (!board) return; const result = redoBoard(board, history); set({ ...result, revision: result.board === board ? revision : revision + 1 }); },
+  undo: (actorId = getLocalActorId()) => {
+    const { history } = get(); if (!canDispatchLocalCommands()) return;
+    const index = actorEntryIndex(history.undo, actorId); const entry = history.undo[index];
+    if (!entry?.inverseCommand) return;
+    const nextHistory = { undo: history.undo.filter((_, itemIndex) => itemIndex !== index), redo: [...history.redo, entry] };
+    set({ history: nextHistory });
+    get().dispatchCommand(entry.inverseCommand, localCommandMetadata(`Undo ${entry.label}`, "undo"), "local", false);
+  },
+  redo: (actorId = getLocalActorId()) => {
+    const { history } = get(); if (!canDispatchLocalCommands()) return;
+    const index = actorEntryIndex(history.redo, actorId); const entry = history.redo[index];
+    if (!entry?.redoCommand) return;
+    const nextHistory = { undo: [...history.undo, entry], redo: history.redo.filter((_, itemIndex) => itemIndex !== index) };
+    set({ history: nextHistory });
+    get().dispatchCommand(entry.redoCommand, localCommandMetadata(`Redo ${entry.label}`, "redo"), "local", false);
+  },
 }));
 
 export { createBoard };

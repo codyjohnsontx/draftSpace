@@ -8,6 +8,7 @@ import { applyStylePreview, sharedValue, visibleRecentColors, type SharedValue }
 import { useBoardStore } from "@/stores/board-store";
 import { useSessionStore } from "@/stores/session-store";
 import { useUiPreferencesStore, type InspectorMode } from "@/stores/ui-preferences-store";
+import { useCollaborationStore } from "@/stores/collaboration-store";
 
 const capitalize = (value: string) => `${value.charAt(0).toUpperCase()}${value.slice(1)}`;
 
@@ -28,6 +29,8 @@ export function StyleInspector() {
   const preview = useSessionStore((state) => state.stylePreview);
   const hydrated = useUiPreferencesStore((state) => state.hydrated);
   const preferences = useUiPreferencesStore((state) => state.inspector);
+  const collaborationMode = useCollaborationStore((state) => state.mode); const collaborationStatus = useCollaborationStore((state) => state.status); const collaborationRole = useCollaborationStore((state) => state.role);
+  const readOnly = collaborationMode === "guest" && (collaborationStatus !== "connected" || collaborationRole !== "editor");
   const selected = useMemo(() => board ? selectedIds.map((id) => board.elements[id]).filter((element): element is CanvasElement => Boolean(element)) : [], [board, selectedIds]);
   const previewIds = useMemo(() => new Set(preview?.elementIds ?? []), [preview]);
   const displayed = useMemo(() => preview ? selected.map((element) => applyStylePreview(element, preview, previewIds)) : selected, [selected, preview, previewIds]);
@@ -58,7 +61,7 @@ export function StyleInspector() {
     useUiPreferencesStore.getState().setInspectorMode(mode);
   }, [finishPreview]);
 
-  if (!hydrated || preferences.mode === "hidden" || (preferences.mode === "floating" && !selected.length)) return null;
+  if (!hydrated || readOnly || preferences.mode === "hidden" || (preferences.mode === "floating" && !selected.length)) return null;
 
   const fill = sharedValue(displayed, (element) => element.fillColor);
   const stroke = sharedValue(displayed, (element) => element.strokeColor);

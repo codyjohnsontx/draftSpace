@@ -12,6 +12,7 @@ import { useBoardStore } from "@/stores/board-store";
 import { initializePerformanceMonitor } from "@/features/performance/performance-monitor";
 import { useUiPreferencesStore } from "@/stores/ui-preferences-store";
 import { StyleInspector } from "@/components/inspector/style-inspector";
+import { collaborationController } from "@/features/collaboration/collaboration-controller";
 
 export function DraftspaceShell() {
   useState(() => initializePerformanceMonitor());
@@ -31,6 +32,7 @@ export function DraftspaceShell() {
     }
     return () => { active = false; };
   }, [hydrateUiPreferences]);
+  useEffect(() => { if (board) collaborationController.resumeHost(); }, [board]);
   if (status === "recovery-required" && recovery) return <BoardRecoveryScreen recovery={recovery} controller={persistence} />;
   if (capabilities && !capabilities.canvas2d) return <UnsupportedBrowserScreen canDownloadBackup={Boolean(board)} onDownloadBackup={persistence.downloadCurrentBackup} />;
   if (!capabilities) return <div className="loading-canvas"><span /><p>Checking canvas support…</p></div>;
