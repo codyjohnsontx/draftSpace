@@ -69,17 +69,21 @@ This roadmap favors interaction trust over feature count. Draftspace should earn
 
 **Acceptance:** Ellipses and diamonds use the same modifiers, one-shot creation flow, selection controls, history, clipboard, persistence, and recovery behavior as rectangles. Existing version-1 rectangle boards migrate without data loss.
 
-## Phase 2.1B — Lines and styling
+## Phase 2.1B — Styling and lines
 
 **Goal:** Expand visual vocabulary without weakening the interaction model.
 
-- Straight lines
-- Rotation
-- Contextual inspector
-- Stroke, fill, width, style, opacity, and corner-radius controls
-- Curated and recent colors
+- [x] Contextual inspector with floating, right-sidebar, and hidden layouts
+- [x] App-level inspector layout preference with narrow-screen overlay behavior
+- [x] Stroke, fill, width, style, opacity, and rectangle corner-radius controls
+- [x] Curated, custom, and recent colors with mixed-selection behavior
+- [x] Live session previews that commit one history entry per completed edit
+- [ ] Straight lines
+- [ ] Rotation
 
 **Acceptance:** Lines and every styling change use the same selection, transformation, history, clipboard, persistence, and export contracts as existing shapes.
+
+**Follow-up:** Add reusable recent-shape presets so a user can create a copy of a previous shape’s type, dimensions, and style with one action. Define preset persistence, retention, naming, and placement behavior as a separate slice.
 
 ## Phase 2.2 — Text, notes, and freehand
 

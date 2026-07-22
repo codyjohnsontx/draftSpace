@@ -35,3 +35,7 @@ export type EllipseElement = BaseShapeElement & { type: "ellipse" };
 export type DiamondElement = BaseShapeElement & { type: "diamond" };
 
 export type CanvasElement = RectangleElement | EllipseElement | DiamondElement;
+
+export type ShapeStylePatch = Partial<Pick<BaseShapeElement,
+  "fillColor" | "strokeColor" | "strokeWidth" | "strokeStyle" | "opacity"
+>> & { cornerRadius?: number };

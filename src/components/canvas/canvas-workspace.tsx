@@ -19,6 +19,7 @@ import { ToolRail } from "@/components/toolbar/tool-rail";
 import { ViewportControls } from "@/components/controls/viewport-controls";
 import { observeElementSize } from "@/lib/browser/observe-element-size";
 import { markInteraction, measurePerformance } from "@/features/performance/performance-monitor";
+import { applyStylePreview } from "@/features/inspector/style-values";
 
 type Gesture =
   | { type: "pan"; pointerId: number; start: Point; viewport: Viewport }
@@ -33,6 +34,7 @@ const isShapeTool = (tool: string): tool is ShapeType => tool === "rectangle" ||
 export function CanvasWorkspace() {
   const board = useBoardStore((s) => s.board); const viewport = useViewportStore((s) => s.viewport);
   const selectedIds = useSessionStore((s) => s.selectedIds); const activeTool = useSessionStore((s) => s.activeTool); const spaceHeld = useSessionStore((s) => s.spaceHeld);
+  const stylePreview = useSessionStore((s) => s.stylePreview);
   const rootRef = useRef<HTMLDivElement>(null); const [gesture, setGesture] = useState<Gesture>(null); const [size, setSize] = useState({ width: 0, height: 0 });
 
   useLayoutEffect(() => {
@@ -55,6 +57,8 @@ export function CanvasWorkspace() {
     else { const next = resizedBounds(current.initialBounds, current.handle, { x: current.current.x - current.origin.x, y: current.current.y - current.origin.y }, { preserveAspect: current.preserveAspect, fromCenter: current.fromCenter }); changed = scaleElements(current.initial, current.initialBounds, next); }
     const map = new Map(changed.map((e) => [e.id, e])); return ordered.map((e) => map.get(e.id) ?? e);
   }, [ordered, gesture, moveDelta]);
+  const stylePreviewIds = useMemo(() => new Set(stylePreview?.elementIds ?? []), [stylePreview]);
+  const renderedElements = useMemo(() => stylePreview ? displayed.map((element) => applyStylePreview(element, stylePreview, stylePreviewIds)) : displayed, [displayed, stylePreview, stylePreviewIds]);
 
   const selectedIdSet = useMemo(() => new Set(selectedIds), [selectedIds]);
   const selectedElements = displayed.filter((e) => selectedIdSet.has(e.id));
@@ -158,7 +162,7 @@ export function CanvasWorkspace() {
   if (!board) return <div className="loading-canvas"><span /><p>Opening your draft…</p></div>;
   const cursor = spaceHeld || activeTool === "hand" ? "grab" : isShapeTool(activeTool) ? "crosshair" : "default";
   return <main ref={rootRef} className="canvas-workspace" aria-label="Draftspace infinite canvas" data-tool={activeTool} data-board-ready="true" style={{ cursor }} onPointerDown={onPointerDown} onPointerMove={onPointerMove} onPointerUp={finishGesture} onPointerCancel={() => setGesture(null)} onWheel={(event) => { event.preventDefault(); markInteraction(ordered.length); const p = localPoint(event); if (classifyWheelGesture(event) === "zoom") useViewportStore.getState().zoomAt(p, viewport.zoom * Math.exp(-event.deltaY * .0015)); else useViewportStore.getState().panBy({ x: -event.deltaX, y: -event.deltaY }); }}>
-    <SceneCanvas board={board} viewport={viewport} elements={displayed} width={size.width} height={size.height} draftShape={draftShape} />
+    <SceneCanvas board={board} viewport={viewport} elements={renderedElements} width={size.width} height={size.height} draftShape={draftShape} />
     <InteractionOverlay bounds={selectedBounds} marquee={marquee} snapBounds={snapPreview} viewport={viewport} />
     {!board.elementIds.length && !draftShape && <div className="empty-hint"><p>Start with a shape</p><span>Press <kbd>R</kbd>, <kbd>E</kbd>, or <kbd>D</kbd>, then drag anywhere</span></div>}
     <ToolRail /><ViewportControls size={size} />

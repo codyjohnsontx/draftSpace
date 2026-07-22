@@ -18,6 +18,7 @@ test("explains every toolbar control consistently", async ({ page }, testInfo) =
     ["Snap to grid", "Click to align objects"],
     ["Undo", "Reverse the last board change"],
     ["Redo", "Restore the last undone change"],
+    ["Inspector layout", "Choose floating, right sidebar, or hidden"],
     ["Export", "Download options arrive"],
     ["Help and keyboard shortcuts", "Shortcut reference"],
   ] as const;

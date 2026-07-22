@@ -10,11 +10,13 @@ Rectangles, ellipses, and diamonds form a discriminated shape union over shared 
 
 ## State boundaries
 
-The board store contains only versioned, persistent document state. The session store contains tools and selection. The viewport store owns the camera. Gesture previews remain local to the canvas workspace and commit a single board transaction on pointer-up, preventing pointer frames from entering history or persistence.
+The board store contains only versioned, persistent document state. The session store contains tools, selection, and derived style previews. The viewport store owns the camera. Geometry gesture previews remain local to the canvas workspace, while inspector previews are shared session state so React controls and Canvas 2D render the same pending value. Both preview paths commit a single board transaction at completion, preventing intermediate frames from entering history or persistence.
+
+Inspector layout and recent colors are application preferences stored under a validated, versioned localStorage key. They are not board preferences and never enter IndexedDB documents, board exports, clipboard payloads, history, or benchmark reports. Invalid or unavailable preference storage falls back to in-memory floating-mode defaults without blocking the canvas. Desktop sidebar mode reserves canvas width; the same preference becomes a non-modal overlay at narrow widths.
 
 ## History
 
-Meaningful operations generate Immer forward and inverse patches. The history manager stores at most 100 logical entries. Viewport motion, hover, menus, and intermediate gesture frames are excluded.
+Meaningful operations generate Immer forward and inverse patches. The history manager stores at most 100 logical entries. A discrete style choice is one operation; continuous opacity, corner, and custom-color input is previewed in session state and becomes one operation on completion. Viewport motion, hover, menus, application preferences, and intermediate gesture or style frames are excluded.
 
 ## Persistence
 
