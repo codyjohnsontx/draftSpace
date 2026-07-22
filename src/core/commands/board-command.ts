@@ -54,14 +54,22 @@ const mutablePatchSchema = z.object({
   roughness: z.number().min(0).max(2).optional(), boundTextId: z.string().nullable().optional(), cornerRadius: z.number().finite().nonnegative().optional(),
 }).strict();
 
-export const boardCommandSchema = z.discriminatedUnion("type", [
+const boardPreferencesPatchSchema = z.object({
+  backgroundPattern: z.enum(["dots", "grid", "none"]).optional(),
+  gridSize: z.number().positive().max(500).optional(),
+  snapToGrid: z.boolean().optional(),
+  restoreViewport: z.boolean().optional(),
+});
+
+const boardCommandSchemaDefinition = z.discriminatedUnion("type", [
   z.object({ type: z.literal("elements.create"), elements: z.array(canvasElementSchema).max(1000), insertionIndexes: z.array(z.number().int().nonnegative()).optional() }),
   z.object({ type: z.literal("elements.delete"), elementIds: z.array(z.string()).max(1000), expectedElements: z.record(z.string(), canvasElementSchema).optional() }),
   z.object({ type: z.literal("elements.update"), updates: z.array(z.object({ elementId: z.string(), patch: mutablePatchSchema, expected: mutablePatchSchema.optional() })).max(1000) }),
-  z.object({ type: z.literal("board.update"), patch: z.object({ name: z.string().optional(), preferences: z.object({ backgroundPattern: z.enum(["dots", "grid", "none"]).optional(), gridSize: z.number().positive().max(500).optional(), snapToGrid: z.boolean().optional(), restoreViewport: z.boolean().optional() }).optional() }), expected: z.object({ name: z.string().optional(), preferences: z.object({ backgroundPattern: z.enum(["dots", "grid", "none"]).optional(), gridSize: z.number().positive().max(500).optional(), snapToGrid: z.boolean().optional(), restoreViewport: z.boolean().optional() }).optional() }).optional() }),
+  z.object({ type: z.literal("board.update"), patch: z.object({ name: z.string().optional(), preferences: boardPreferencesPatchSchema.optional() }), expected: z.object({ name: z.string().optional(), preferences: boardPreferencesPatchSchema.optional() }).optional() }),
 ]);
+export const boardCommandSchema: z.ZodType<BoardCommand> = boardCommandSchemaDefinition;
 
 export function parseBoardCommand(value: unknown): BoardCommand | null {
   const result = boardCommandSchema.safeParse(value);
-  return result.success ? result.data as BoardCommand : null;
+  return result.success ? result.data : null;
 }

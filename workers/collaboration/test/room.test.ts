@@ -2,6 +2,7 @@ import { env, runInDurableObject, SELF } from "cloudflare:test";
 import { describe, expect, it } from "vitest";
 import type { Room } from "../src/room";
 import type { ClientMessage, ServerMessage } from "@draftspace/collaboration-protocol";
+import { tokenHash, tokenMatchesHash } from "../src/security";
 
 const origin = "http://127.0.0.1:3000";
 
@@ -18,7 +19,10 @@ async function openSocket(code: string) {
 
 function nextMessage(socket: WebSocket, type: ServerMessage["type"]): Promise<ServerMessage> {
   return new Promise((resolve, reject) => {
-    const timeout = setTimeout(() => reject(new Error(`Timed out waiting for ${type}`)), 2000);
+    const timeout = setTimeout(() => {
+      socket.removeEventListener("message", listener);
+      reject(new Error(`Timed out waiting for ${type}`));
+    }, 2000);
     const listener = (event: MessageEvent) => {
       const message = JSON.parse(String(event.data)) as ServerMessage;
       if (message.type !== type) return;
@@ -31,6 +35,13 @@ function nextMessage(socket: WebSocket, type: ServerMessage["type"]): Promise<Se
 function send(socket: WebSocket, message: ClientMessage) { socket.send(JSON.stringify(message)); }
 
 describe("collaboration room worker", () => {
+  it("compares host token digests without comparing their hex strings", async () => {
+    const hash = await tokenHash("host-secret");
+    expect(await tokenMatchesHash("host-secret", hash)).toBe(true);
+    expect(await tokenMatchesHash("wrong-secret", hash)).toBe(false);
+    expect(await tokenMatchesHash("host-secret", "invalid")).toBe(false);
+  });
+
   it("creates an ephemeral room without storing board content", async () => {
     const created = await createRoom();
     expect(created.code).toMatch(/^[0-9A-Z]{10}$/);
@@ -83,5 +94,37 @@ describe("collaboration room worker", () => {
       expect(metadata?.participants).toEqual([]);
     });
     host.close();
+  });
+
+  it("supersedes a stale host connection and restores pending lobby requests", async () => {
+    const created = await createRoom();
+    const originalHost = await openSocket(created.code);
+    const originalAck = nextMessage(originalHost, "hello.ack");
+    send(originalHost, { type: "hello", protocolVersion: 1, mode: "host", token: created.hostToken, profile: { id: "host-profile", displayName: "Cody", color: "#b85f3f" } });
+    await originalAck;
+
+    const guest = await openSocket(created.code);
+    const joinRequest = nextMessage(originalHost, "join.request");
+    send(guest, { type: "hello", protocolVersion: 1, mode: "guest", profile: { id: "guest-profile", displayName: "Alex", color: "#4f6fa8" } });
+    await joinRequest;
+
+    const replacementHost = await openSocket(created.code);
+    const replacementAck = nextMessage(replacementHost, "hello.ack");
+    const replayedRequest = nextMessage(replacementHost, "join.request");
+    const originalClosed = new Promise<void>((resolve) => originalHost.addEventListener("close", () => resolve(), { once: true }));
+    send(replacementHost, { type: "hello", protocolVersion: 1, mode: "host", token: created.hostToken, profile: { id: "host-profile", displayName: "Cody", color: "#b85f3f" } });
+
+    expect((await replacementAck).type).toBe("hello.ack");
+    expect((await replayedRequest).type).toBe("join.request");
+    await originalClosed;
+    replacementHost.close(); guest.close();
+  });
+
+  it("rate limits room creation by request identity", async () => {
+    const headers = { Origin: origin, "CF-Connecting-IP": "192.0.2.10" };
+    for (let attempt = 0; attempt < 10; attempt += 1) {
+      expect((await SELF.fetch("https://collaboration.test/rooms", { method: "POST", headers })).status).toBe(201);
+    }
+    expect((await SELF.fetch("https://collaboration.test/rooms", { method: "POST", headers })).status).toBe(429);
   });
 });

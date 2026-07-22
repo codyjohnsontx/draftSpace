@@ -13,9 +13,11 @@ import { initializePerformanceMonitor } from "@/features/performance/performance
 import { useUiPreferencesStore } from "@/stores/ui-preferences-store";
 import { StyleInspector } from "@/components/inspector/style-inspector";
 import { collaborationController } from "@/features/collaboration/collaboration-controller";
+import { collaborationEnabled } from "@/features/collaboration/collaboration-enabled";
 
 export function DraftspaceShell() {
   useState(() => initializePerformanceMonitor());
+  const liveCollaborationEnabled = collaborationEnabled;
   const persistence = useBoardPersistence();
   const status = usePersistenceStore((state) => state.status); const recovery = usePersistenceStore((state) => state.recovery);
   const board = useBoardStore((state) => state.board);
@@ -32,7 +34,7 @@ export function DraftspaceShell() {
     }
     return () => { active = false; };
   }, [hydrateUiPreferences]);
-  useEffect(() => { if (board) collaborationController.resumeHost(); }, [board]);
+  useEffect(() => { if (liveCollaborationEnabled && board) collaborationController.resumeHost(); }, [board, liveCollaborationEnabled]);
   if (status === "recovery-required" && recovery) return <BoardRecoveryScreen recovery={recovery} controller={persistence} />;
   if (capabilities && !capabilities.canvas2d) return <UnsupportedBrowserScreen canDownloadBackup={Boolean(board)} onDownloadBackup={persistence.downloadCurrentBackup} />;
   if (!capabilities) return <div className="loading-canvas"><span /><p>Checking canvas support…</p></div>;

@@ -13,6 +13,9 @@ export default {
     if (!originAllowed(origin, env.ALLOWED_ORIGINS)) return new Response("Forbidden", { status: 403 });
     if (request.method === "OPTIONS") return new Response(null, { status: 204, headers: cors(origin!) });
     if (request.method === "POST" && url.pathname === "/rooms") {
+      const requestIdentity = request.headers.get("CF-Connecting-IP")?.trim() || origin!;
+      const rateLimit = await env.ROOM_CREATION_RATE_LIMITER.limit({ key: requestIdentity });
+      if (!rateLimit.success) return json({ error: "rate-limited" }, 429, origin!);
       for (let attempt = 0; attempt < 5; attempt += 1) {
         const code = randomCode(); const hostToken = randomToken(); const roomId = crypto.randomUUID();
         const room = env.ROOMS.get(env.ROOMS.idFromName(code));

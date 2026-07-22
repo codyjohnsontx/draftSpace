@@ -25,6 +25,7 @@ export function TopBar({ persistence }: { persistence?: PersistenceController })
   const canRedo = history.redo.some((entry) => entry.metadata?.actorId === actorId);
   const inspectorMenuRef = useRef<HTMLDivElement>(null);
   const inspectorButtonRef = useRef<HTMLButtonElement>(null);
+  const shareButtonRef = useRef<HTMLButtonElement>(null);
   useEffect(() => {
     if (!inspectorMenuOpen) return;
     const closeOutside = (event: PointerEvent) => { if (!inspectorMenuRef.current?.contains(event.target as Node)) setInspectorMenuOpen(false); };
@@ -38,7 +39,7 @@ export function TopBar({ persistence }: { persistence?: PersistenceController })
     <input key={board.name} className="board-name" aria-label="Board name" defaultValue={board.name} disabled={guestReadOnly} onBlur={(e) => rename(e.currentTarget.value)} onKeyDown={(e) => { if (e.key === "Enter") e.currentTarget.blur(); }} />
     <div className="top-actions">
       {persistence ? <PersistenceStatus controller={persistence} /> : <LiveRoomStatus />}
-      {persistence && collaborationEnabled && <Tooltip side="bottom" label={collaborationMode === "host" ? "Live room" : "Share"} description={pendingCount ? `${pendingCount} join request${pendingCount === 1 ? "" : "s"} waiting` : collaborationMode === "host" ? `${participantCount} people connected` : "Invite people into this board"}>{(tooltipId) => <button type="button" className={`icon-button share-button ${collaborationMode === "host" && collaborationStatus === "connected" ? "live" : ""} ${pendingCount ? "pending" : ""}`} aria-label="Share board" aria-describedby={tooltipId} onClick={() => setShareOpen(true)}>{collaborationMode === "host" ? <Radio size={17} /> : <UserRoundPlus size={17} />}{collaborationMode === "host" && <b>{pendingCount || participantCount}</b>}</button>}</Tooltip>}
+      {persistence && collaborationEnabled && <Tooltip side="bottom" label={collaborationMode === "host" ? "Live room" : "Share"} description={pendingCount ? `${pendingCount} join request${pendingCount === 1 ? "" : "s"} waiting` : collaborationMode === "host" ? `${participantCount} people connected` : "Invite people into this board"}>{(tooltipId) => <button ref={shareButtonRef} type="button" className={`icon-button share-button ${collaborationMode === "host" && collaborationStatus === "connected" ? "live" : ""} ${pendingCount ? "pending" : ""}`} aria-label="Share board" aria-describedby={tooltipId} onClick={() => setShareOpen(true)}>{collaborationMode === "host" ? <Radio size={17} /> : <UserRoundPlus size={17} />}{collaborationMode === "host" && <b>{pendingCount || participantCount}</b>}</button>}</Tooltip>}
       <span className="divider" />
       <div className="inspector-menu-wrap" ref={inspectorMenuRef} onKeyDown={(event) => {
         if (event.key === "Escape") { setInspectorMenuOpen(false); inspectorButtonRef.current?.focus(); return; }
@@ -61,6 +62,6 @@ export function TopBar({ persistence }: { persistence?: PersistenceController })
       <Tooltip className="desktop-secondary" side="bottom" label="Export" description="Download options arrive in Phase 4">{(tooltipId) => <button type="button" className="icon-button" aria-label="Export" aria-describedby={tooltipId}><Download size={17} /></button>}</Tooltip>
       <Tooltip className="desktop-secondary" side="bottom" align="end" label="Keyboard shortcuts" description="Shortcut reference — coming soon">{(tooltipId) => <button type="button" className="icon-button" aria-label="Help and keyboard shortcuts" aria-describedby={tooltipId}><HelpCircle size={17} /></button>}</Tooltip>
     </div>
-    {shareOpen && <ShareRoomDialog onClose={() => setShareOpen(false)} />}
+    {shareOpen && <ShareRoomDialog onClose={() => setShareOpen(false)} returnFocusRef={shareButtonRef} />}
   </header>;
 }

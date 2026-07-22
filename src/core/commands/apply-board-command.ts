@@ -51,9 +51,17 @@ function matchesBoardExpected(board: Draft<BoardDocument>, expected: BoardUpdate
 export function applyBoardCommand(board: Draft<BoardDocument>, command: BoardCommand): boolean {
   let changed = false;
   if (command.type === "elements.create") {
-    command.elements.forEach((element, index) => {
+    const maximumInsertionIndex = board.elementIds.length + command.elements.length - 1;
+    const orderedElements = command.elements.map((element, inputIndex) => ({ element, inputIndex, insertionIndex: command.insertionIndexes?.[inputIndex] }));
+    orderedElements.sort((a, b) => {
+      const aValid = Number.isInteger(a.insertionIndex) && a.insertionIndex! >= 0 && a.insertionIndex! <= maximumInsertionIndex;
+      const bValid = Number.isInteger(b.insertionIndex) && b.insertionIndex! >= 0 && b.insertionIndex! <= maximumInsertionIndex;
+      if (aValid !== bValid) return aValid ? -1 : 1;
+      if (aValid && bValid && a.insertionIndex !== b.insertionIndex) return a.insertionIndex! - b.insertionIndex!;
+      return a.inputIndex - b.inputIndex;
+    });
+    orderedElements.forEach(({ element, insertionIndex }) => {
       if (board.elements[element.id]) return;
-      const insertionIndex = command.insertionIndexes?.[index];
       if (insertionIndex === undefined || insertionIndex < 0 || insertionIndex > board.elementIds.length) board.elementIds.push(element.id);
       else board.elementIds.splice(insertionIndex, 0, element.id);
       board.elements[element.id] = element;

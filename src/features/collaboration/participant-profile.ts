@@ -13,12 +13,14 @@ export function loadParticipantProfile(): ParticipantProfile | null {
   } catch { return null; }
 }
 
-export function saveParticipantProfile(displayName: string, existing = loadParticipantProfile()): ParticipantProfile {
-  const profile = participantProfileSchema.parse({
+export function saveParticipantProfile(displayName: string, existing = loadParticipantProfile()): ParticipantProfile | null {
+  const result = participantProfileSchema.safeParse({
     id: existing?.id ?? newId(),
     displayName: displayName.trim(),
     color: existing?.color ?? colors[Math.floor(Math.random() * colors.length)],
   });
+  if (!result.success) return null;
+  const profile = result.data;
   try { localStorage.setItem(PARTICIPANT_PROFILE_KEY, JSON.stringify(profile)); } catch { /* The profile remains available for this session. */ }
   return profile;
 }

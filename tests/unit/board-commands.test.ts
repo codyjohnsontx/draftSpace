@@ -24,6 +24,19 @@ describe("board commands", () => {
     expect(useBoardStore.getState().board?.elementIds).toEqual([]);
   });
 
+  it("restores an out-of-order multi-element deletion in document order", () => {
+    const board = createBoard();
+    const elements = [0, 1, 2, 3].map((index) => ({ ...createShape("rectangle", { x: index * 20, y: 0, width: 10, height: 10 }), id: `element-${index}` }));
+    elements.forEach((element) => { board.elements[element.id] = element; board.elementIds.push(element.id); });
+    useBoardStore.getState().setBoard(board);
+
+    useBoardStore.getState().dispatchCommand({ type: "elements.delete", elementIds: ["element-3", "element-1"] }, metadata("local", "delete"));
+    expect(useBoardStore.getState().board?.elementIds).toEqual(["element-0", "element-2"]);
+
+    useBoardStore.getState().undo("local");
+    expect(useBoardStore.getState().board?.elementIds).toEqual(["element-0", "element-1", "element-2", "element-3"]);
+  });
+
   it("undoes only the local actor's unchanged fields", () => {
     const board = createBoard();
     const element = createShape("rectangle", { x: 10, y: 20, width: 100, height: 80 });

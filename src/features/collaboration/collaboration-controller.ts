@@ -14,6 +14,7 @@ const httpUrl = () => process.env.NEXT_PUBLIC_COLLABORATION_HTTP_URL ?? "http://
 const wsUrl = () => process.env.NEXT_PUBLIC_COLLABORATION_WS_URL ?? "ws://127.0.0.1:8787";
 const hostSessionKey = "draftspace:collaboration-host";
 const guestSessionKey = "draftspace:collaboration-guest";
+const roomCreationTimeoutMs = 10_000;
 
 type ConnectionDetails = { mode: "host" | "guest"; code: string; url: string; token?: string; profile: ParticipantProfile };
 
@@ -41,14 +42,17 @@ export class CollaborationController {
     this.deliberateClose = false; this.appliedCommandIds.clear(); this.clearProposalQueue();
     useCollaborationStore.getState().set({ mode: "host", status: "creating", self: profile, boardReady: true, error: null });
     setLocalActorIdProvider(() => profile.id);
+    const abortController = new AbortController();
+    const timeout = setTimeout(() => abortController.abort(), roomCreationTimeoutMs);
     try {
-      const response = await fetch(`${httpUrl()}/rooms`, { method: "POST" });
+      const response = await fetch(`${httpUrl()}/rooms`, { method: "POST", signal: abortController.signal });
       if (!response.ok) throw new Error("Draftspace could not create a live room.");
       const room = await response.json() as { code: string; hostToken: string; websocketUrl?: string };
       const details = { mode: "host" as const, code: room.code, token: room.hostToken, profile, url: room.websocketUrl ?? `${wsUrl()}/rooms/${room.code}/connect` };
       sessionStorage.setItem(hostSessionKey, JSON.stringify(details));
       this.connect(details);
     } catch (error) { useCollaborationStore.getState().set({ status: "error", error: error instanceof Error ? error.message : "Draftspace could not create a live room." }); }
+    finally { clearTimeout(timeout); }
   }
 
   join(code: string, profile: ParticipantProfile) {
@@ -124,7 +128,7 @@ export class CollaborationController {
   }
 
   private onClose() {
-    if (this.deliberateClose || !this.connection || useCollaborationStore.getState().status === "ended") return;
+    if (this.deliberateClose || !this.connection || ["ended", "error"].includes(useCollaborationStore.getState().status)) return;
     useCollaborationStore.getState().set({ status: "connecting" });
     const delay = Math.min(5000, 500 * 2 ** this.reconnectAttempt++);
     this.reconnectTimer = setTimeout(() => this.openTransport(), delay);

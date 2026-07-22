@@ -1,12 +1,13 @@
 import { DurableObject } from "cloudflare:workers";
 import { parseClientMessage, type ParticipantProfile, type ParticipantRole, type ServerMessage } from "@draftspace/collaboration-protocol";
-import { randomToken, tokenHash } from "./security";
+import { randomToken, tokenHash, tokenMatchesHash } from "./security";
 
 type StoredParticipant = { participantId: string; tokenHash: string; role: "viewer" | "editor" };
 type RoomMetadata = { roomId: string; hostTokenHash: string; roomRevision: number; hostDisconnectedAt: number | null; unclaimedExpiresAt: number | null; participants: StoredParticipant[] };
 type Attachment = { connectionId: string; participantId: string; authenticated: boolean; role: ParticipantRole | "pending"; profile?: ParticipantProfile; messageWindowStartedAt?: number; messageCount?: number; lastPresenceAt?: number; superseded?: boolean };
 
 const json = (value: unknown, status = 200) => new Response(JSON.stringify(value), { status, headers: { "content-type": "application/json" } });
+const numberEnv = (value: string | undefined, fallback: number) => { const parsed = Number(value); return Number.isFinite(parsed) ? parsed : fallback; };
 
 export class Room extends DurableObject<Env> {
   private metadata: RoomMetadata | null = null;
@@ -26,7 +27,7 @@ export class Room extends DurableObject<Env> {
     if (request.method === "POST" && url.pathname.endsWith("/create")) {
       if (await this.getMetadata()) return json({ error: "room-exists" }, 409);
       const body = await request.json<{ roomId: string; hostTokenHash: string }>();
-      const unclaimedExpiresAt = Date.now() + Number(this.env.ROOM_UNCLAIMED_TTL_MS || 300000);
+      const unclaimedExpiresAt = Date.now() + numberEnv(this.env.ROOM_UNCLAIMED_TTL_MS, 300000);
       await this.save({ roomId: body.roomId, hostTokenHash: body.hostTokenHash, roomRevision: 0, hostDisconnectedAt: null, unclaimedExpiresAt, participants: [] });
       await this.ctx.storage.setAlarm(unclaimedExpiresAt);
       return json({ ok: true }, 201);
@@ -42,7 +43,7 @@ export class Room extends DurableObject<Env> {
   }
 
   async webSocketMessage(socket: WebSocket, raw: string | ArrayBuffer) {
-    if (typeof raw !== "string" || new TextEncoder().encode(raw).byteLength > Number(this.env.ROOM_MAX_MESSAGE_BYTES || 5_242_880)) return this.error(socket, "invalid-message", "The room message was invalid.");
+    if (typeof raw !== "string" || new TextEncoder().encode(raw).byteLength > numberEnv(this.env.ROOM_MAX_MESSAGE_BYTES, 5_242_880)) return this.error(socket, "invalid-message", "The room message was invalid.");
     let parsed: unknown;
     try { parsed = JSON.parse(raw); } catch { return this.error(socket, "invalid-json", "The room message was invalid."); }
     const message = parseClientMessage(parsed);
@@ -60,7 +61,11 @@ export class Room extends DurableObject<Env> {
     if (message.type === "hello") {
       if (attachment.authenticated) return;
       if (message.mode === "host") {
-        if (!message.token || await tokenHash(message.token) !== metadata.hostTokenHash) return this.error(socket, "unauthorized", "The host token is invalid.");
+        if (!message.token || !await tokenMatchesHash(message.token, metadata.hostTokenHash)) return this.error(socket, "unauthorized", "The host token is invalid.");
+        this.connections().filter(({ socket: otherSocket, attachment: item }) => otherSocket !== socket && item.authenticated && item.role === "host" && item.participantId === message.profile.id).forEach(({ socket: otherSocket, attachment: item }) => {
+          otherSocket.serializeAttachment({ ...item, superseded: true });
+          otherSocket.close(4001, "Reconnected elsewhere");
+        });
         const next = { ...attachment, participantId: message.profile.id, authenticated: true, role: "host" as const, profile: message.profile };
         socket.serializeAttachment(next);
         const returning = metadata.hostDisconnectedAt !== null;
@@ -71,13 +76,16 @@ export class Room extends DurableObject<Env> {
         this.connections().filter(({ socket: otherSocket, attachment: item }) => otherSocket !== socket && item.authenticated && item.role !== "host" && item.profile).forEach(({ attachment: item }) => {
           this.send(socket, { type: "participant.joined", participant: { ...item.profile!, participantId: item.participantId, role: item.role as ParticipantRole } });
         });
+        this.connections().filter(({ socket: otherSocket, attachment: item }) => otherSocket !== socket && !item.authenticated && item.role === "pending" && item.profile).forEach(({ attachment: item }) => {
+          this.send(socket, { type: "join.request", participant: { ...item.profile!, participantId: item.participantId, role: "viewer" } });
+        });
         if (returning) this.broadcast({ type: "host.returned" }, socket);
         return;
       }
       const reconnectHash = message.token ? await tokenHash(message.token) : null;
       const reconnect = reconnectHash ? metadata.participants.find((participant) => participant.tokenHash === reconnectHash) : undefined;
       const activeGuests = this.connections().filter(({ attachment: item }) => item.role !== "host" && (item.authenticated || item.profile)).length;
-      if (!reconnect && activeGuests >= Number(this.env.ROOM_MAX_PARTICIPANTS || 4) - 1) return this.error(socket, "room-full", "This room is full.");
+      if (!reconnect && activeGuests >= numberEnv(this.env.ROOM_MAX_PARTICIPANTS, 4) - 1) return this.error(socket, "room-full", "This room is full.");
       const participantId = reconnect?.participantId ?? attachment.connectionId;
       const role: Attachment["role"] = reconnect?.role ?? "pending";
       socket.serializeAttachment({ ...attachment, participantId, authenticated: Boolean(reconnect), role, profile: message.profile });
@@ -135,7 +143,7 @@ export class Room extends DurableObject<Env> {
     if (attachment.role === "host") {
       const metadata = await this.getMetadata();
       if (metadata) {
-        const deadline = Date.now() + Number(this.env.ROOM_GRACE_PERIOD_MS || 60000);
+        const deadline = Date.now() + numberEnv(this.env.ROOM_GRACE_PERIOD_MS, 60000);
         metadata.hostDisconnectedAt = Date.now(); await this.save(metadata); await this.ctx.storage.setAlarm(deadline);
         this.broadcast({ type: "host.away", deadline }, socket);
       }

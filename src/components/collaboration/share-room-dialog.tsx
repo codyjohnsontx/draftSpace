@@ -1,16 +1,40 @@
 "use client";
 
 import { Check, Copy, Eye, MousePointer2, Radio, UserMinus, Users, X } from "lucide-react";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState, type RefObject } from "react";
 import { collaborationController } from "@/features/collaboration/collaboration-controller";
 import { loadParticipantProfile, saveParticipantProfile } from "@/features/collaboration/participant-profile";
 import { useCollaborationStore } from "@/stores/collaboration-store";
 
-export function ShareRoomDialog({ onClose }: { onClose: () => void }) {
+export function ShareRoomDialog({ onClose, returnFocusRef }: { onClose: () => void; returnFocusRef: RefObject<HTMLElement | null> }) {
   const collaboration = useCollaborationStore();
   const existing = useMemo(() => loadParticipantProfile(), []);
   const [name, setName] = useState(existing?.displayName ?? "");
   const [copied, setCopied] = useState(false);
+  const dialogRef = useRef<HTMLElement>(null);
+  const closeButtonRef = useRef<HTMLButtonElement>(null);
+  const onCloseRef = useRef(onClose);
+  useEffect(() => { onCloseRef.current = onClose; }, [onClose]);
+  useEffect(() => {
+    const returnFocus = returnFocusRef.current;
+    closeButtonRef.current?.focus();
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") { event.preventDefault(); onCloseRef.current(); return; }
+      if (event.key !== "Tab") return;
+      const dialog = dialogRef.current;
+      if (!dialog) return;
+      const focusable = [...dialog.querySelectorAll<HTMLElement>("button:not([disabled]), input:not([disabled]), select:not([disabled]), a[href], [tabindex]:not([tabindex='-1'])")];
+      const first = focusable[0]; const last = focusable.at(-1);
+      if (!first || !last) { event.preventDefault(); dialog.focus(); return; }
+      if (event.shiftKey && (document.activeElement === first || !dialog.contains(document.activeElement))) { event.preventDefault(); last.focus(); }
+      else if (!event.shiftKey && (document.activeElement === last || !dialog.contains(document.activeElement))) { event.preventDefault(); first.focus(); }
+    };
+    document.addEventListener("keydown", handleKeyDown);
+    return () => {
+      document.removeEventListener("keydown", handleKeyDown);
+      queueMicrotask(() => { if (returnFocus?.isConnected) returnFocus.focus(); });
+    };
+  }, [returnFocusRef]);
   const live = collaboration.mode === "host" && ["connecting", "connected"].includes(collaboration.status);
   const link = collaboration.code && typeof window !== "undefined" ? `${window.location.origin}/join/${collaboration.code}` : "";
   const copy = async () => {
@@ -18,13 +42,13 @@ export function ShareRoomDialog({ onClose }: { onClose: () => void }) {
     try { await navigator.clipboard.writeText(link); setCopied(true); setTimeout(() => setCopied(false), 1500); } catch { /* The visible code remains available to copy manually. */ }
   };
   return <div className="collaboration-backdrop" onPointerDown={(event) => { if (event.target === event.currentTarget) onClose(); }}>
-    <section className="share-room-dialog" role="dialog" aria-modal="true" aria-labelledby="share-room-title">
-      <header><div><span className="eyebrow">Live collaboration</span><h2 id="share-room-title">{live ? "Room is open" : "Share this board"}</h2></div><button type="button" className="icon-button" aria-label="Close share dialog" onClick={onClose}><X size={17} /></button></header>
+    <section ref={dialogRef} className="share-room-dialog" role="dialog" aria-modal="true" aria-labelledby="share-room-title" tabIndex={-1}>
+      <header><div><span className="eyebrow">Live collaboration</span><h2 id="share-room-title">{live ? "Room is open" : "Share this board"}</h2></div><button ref={closeButtonRef} type="button" className="icon-button" aria-label="Close share dialog" onClick={onClose}><X size={17} /></button></header>
       {!live && collaboration.status !== "creating" ? <>
         <p className="room-intro">Invite up to three people to point, edit, and work through the same board with you.</p>
         <label className="collaboration-field"><span>Your display name</span><input value={name} maxLength={40} autoFocus onChange={(event) => setName(event.currentTarget.value)} placeholder="How others will see you" /></label>
         {collaboration.error && <p className="collaboration-error" role="alert">{collaboration.error}</p>}
-        <button type="button" className="room-primary" disabled={!name.trim()} onClick={() => { const profile = saveParticipantProfile(name); void collaborationController.startHost(profile); }}><Radio size={17} />Start live room</button>
+        <button type="button" className="room-primary" disabled={!name.trim()} onClick={() => { const profile = saveParticipantProfile(name); if (profile) void collaborationController.startHost(profile); }}><Radio size={17} />Start live room</button>
         <small>Your board stays saved on this device. Draftspace only opens a temporary connection while the room is active.</small>
       </> : collaboration.status === "creating" || collaboration.status === "connecting" ? <div className="room-waiting"><span className="connection-pulse" /><strong>Opening the room…</strong><p>Your local board remains available while Draftspace connects.</p></div> : <>
         <div className="invite-code-block"><span>Invite code</span><strong>{collaboration.code}</strong><button type="button" onClick={() => void copy()}>{copied ? <Check size={15} /> : <Copy size={15} />}{copied ? "Copied" : "Copy invite link"}</button></div>

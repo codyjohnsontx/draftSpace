@@ -15,14 +15,15 @@ import Link from "next/link";
 import { collaborationEnabled } from "@/features/collaboration/collaboration-enabled";
 
 export function JoinRoomScreen({ initialCode = "" }: { initialCode?: string }) {
+  const liveCollaborationEnabled = collaborationEnabled;
   const [code, setCode] = useState(initialCode.toUpperCase()); const existing = useMemo(() => loadParticipantProfile(), []); const [name, setName] = useState(existing?.displayName ?? "");
   const collaboration = useCollaborationStore(); const board = useBoardStore((state) => state.board);
   const hydrateUiPreferences = useUiPreferencesStore((state) => state.hydrate);
   useEffect(() => { hydrateUiPreferences(); return () => { if (useCollaborationStore.getState().mode === "guest") collaborationController.leave(); }; }, [hydrateUiPreferences]);
-  useEffect(() => { if (initialCode && existing) collaborationController.resumeGuest(initialCode, existing); }, [initialCode, existing]);
-  if (!collaborationEnabled) return <main className="join-room-page"><div className="join-brand"><span className="brand-mark" aria-hidden="true"><i /><i /></span><strong>Draftspace</strong></div><section className="join-room-panel"><span className="eyebrow"><Radio size={13} />Live room</span><h1>Live rooms are not enabled</h1><p>This build is keeping collaboration private while the remaining shape and rotation contracts are completed.</p><Link className="room-primary" href="/">Return to Draftspace</Link></section></main>;
+  useEffect(() => { if (liveCollaborationEnabled && initialCode && existing) collaborationController.resumeGuest(initialCode, existing); }, [liveCollaborationEnabled, initialCode, existing]);
+  if (!liveCollaborationEnabled) return <main className="join-room-page"><div className="join-brand"><span className="brand-mark" aria-hidden="true"><i /><i /></span><strong>Draftspace</strong></div><section className="join-room-panel"><span className="eyebrow"><Radio size={13} />Live room</span><h1>Live rooms are not enabled</h1><p>This build is keeping collaboration private while the remaining shape and rotation contracts are completed.</p><Link className="room-primary" href="/">Return to Draftspace</Link></section></main>;
   if (board && collaboration.boardReady && collaboration.mode === "guest" && ["connected", "host-away"].includes(collaboration.status)) return <div className="draftspace-shell guest-shell"><CanvasWorkspace /><StyleInspector /><TopBar /><FollowHostBanner />{collaboration.status === "host-away" && <div className="host-away-banner" role="status"><span className="connection-pulse" />Host connection lost. This board is read-only while Draftspace reconnects.</div>}</div>;
-  const submit = () => { const profile = saveParticipantProfile(name); collaborationController.join(code, profile); };
+  const submit = () => { const profile = saveParticipantProfile(name); if (profile) collaborationController.join(code, profile); };
   return <main className="join-room-page">
     <div className="join-brand"><span className="brand-mark" aria-hidden="true"><i /><i /></span><strong>Draftspace</strong></div>
     <section className="join-room-panel">

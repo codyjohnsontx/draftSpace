@@ -35,15 +35,15 @@ export type CommandProposal = z.infer<typeof commandProposalSchema>;
 
 export const clientMessageSchema = z.discriminatedUnion("type", [
   z.object({ type: z.literal("hello"), protocolVersion: z.literal(PROTOCOL_VERSION), mode: z.enum(["host", "guest"]), token: z.string().max(512).optional(), profile: participantProfileSchema }),
-  z.object({ type: z.literal("host.admit"), participantId: z.string(), role: z.enum(["viewer", "editor"]) }),
-  z.object({ type: z.literal("host.reject"), participantId: z.string() }),
-  z.object({ type: z.literal("host.role"), participantId: z.string(), role: z.enum(["viewer", "editor"]) }),
-  z.object({ type: z.literal("host.kick"), participantId: z.string() }),
+  z.object({ type: z.literal("host.admit"), participantId: z.string().min(1).max(128), role: z.enum(["viewer", "editor"]) }),
+  z.object({ type: z.literal("host.reject"), participantId: z.string().min(1).max(128) }),
+  z.object({ type: z.literal("host.role"), participantId: z.string().min(1).max(128), role: z.enum(["viewer", "editor"]) }),
+  z.object({ type: z.literal("host.kick"), participantId: z.string().min(1).max(128) }),
   z.object({ type: z.literal("host.end") }),
   z.object({ type: z.literal("presence.update"), presence: presenceSchema }),
   z.object({ type: z.literal("command.propose"), proposal: commandProposalSchema }),
   z.object({ type: z.literal("command.accept"), participantId: z.string(), proposal: commandProposalSchema }),
-  z.object({ type: z.literal("command.reject"), participantId: z.string(), commandId: z.string(), reason: z.string().max(200) }),
+  z.object({ type: z.literal("command.reject"), participantId: z.string().min(1).max(128), commandId: z.string().min(1).max(128), reason: z.string().max(200) }),
   z.object({ type: z.literal("snapshot.request") }),
   z.object({ type: z.literal("snapshot.response"), participantId: z.string(), board: z.unknown(), roomRevision: z.number().int().nonnegative() }),
   z.object({ type: z.literal("room.leave") }),
@@ -54,28 +54,6 @@ export type ClientMessage = z.infer<typeof clientMessageSchema>;
 export type ParticipantSummary = ParticipantProfile & { participantId: string; role: ParticipantRole };
 
 const participantSummarySchema = participantProfileSchema.extend({ participantId: z.string().min(1).max(128), role: z.enum(["host", "editor", "viewer"]) });
-
-export type ServerMessage =
-  | { type: "connection.ready" }
-  | { type: "hello.ack"; participantId: string; role: ParticipantRole | "pending"; roomRevision: number; reconnectToken?: string }
-  | { type: "join.request"; participant: ParticipantSummary }
-  | { type: "room.admitted"; role: Exclude<ParticipantRole, "host">; reconnectToken: string }
-  | { type: "room.rejected" }
-  | { type: "participant.joined"; participant: ParticipantSummary }
-  | { type: "participant.left"; participantId: string }
-  | { type: "participant.role"; participantId: string; role: Exclude<ParticipantRole, "host"> }
-  | { type: "participant.kicked" }
-  | { type: "presence.update"; participantId: string; presence: PresencePayload }
-  | { type: "command.propose"; participantId: string; proposal: CommandProposal }
-  | { type: "command.accept"; participantId: string; proposal: CommandProposal; roomRevision: number; appliedAt: string }
-  | { type: "command.reject"; commandId: string; reason: string }
-  | { type: "snapshot.request"; participantId: string }
-  | { type: "snapshot.response"; board: unknown; roomRevision: number }
-  | { type: "host.away"; deadline: number }
-  | { type: "host.returned" }
-  | { type: "room.ended"; reason: "host-ended" | "host-timeout" }
-  | { type: "pong" }
-  | { type: "error"; code: string; message: string };
 
 export const serverMessageSchema = z.discriminatedUnion("type", [
   z.object({ type: z.literal("connection.ready") }),
@@ -99,6 +77,7 @@ export const serverMessageSchema = z.discriminatedUnion("type", [
   z.object({ type: z.literal("pong") }),
   z.object({ type: z.literal("error"), code: z.string(), message: z.string() }),
 ]);
+export type ServerMessage = z.infer<typeof serverMessageSchema>;
 
 export function parseClientMessage(value: unknown): ClientMessage | null {
   const result = clientMessageSchema.safeParse(value);
@@ -107,5 +86,5 @@ export function parseClientMessage(value: unknown): ClientMessage | null {
 
 export function parseServerMessage(value: unknown): ServerMessage | null {
   const result = serverMessageSchema.safeParse(value);
-  return result.success ? result.data as ServerMessage : null;
+  return result.success ? result.data : null;
 }

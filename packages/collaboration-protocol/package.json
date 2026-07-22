@@ -5,6 +5,6 @@
   "type": "module",
   "exports": "./src/index.ts",
   "dependencies": {
-    "zod": "latest"
+    "zod": "4.4.3"
   }
 }

@@ -7,8 +7,10 @@ import { useCollaborationStore } from "@/stores/collaboration-store";
 
 export function RemotePresenceOverlay({ board, viewport }: { board: BoardDocument; viewport: Viewport }) {
   const participants = useCollaborationStore((state) => state.participants);
+  const selfParticipantId = useCollaborationStore((state) => state.selfParticipantId);
   return <svg className="remote-presence-overlay" aria-hidden="true">
     {Object.values(participants).map((participant) => {
+      if (participant.participantId === selfParticipantId) return null;
       const presence = participant.presence; if (!presence) return null;
       const selected = presence.selectedElementIds.map((id) => board.elements[id]).filter(Boolean);
       const bounds = selectionBounds(selected);

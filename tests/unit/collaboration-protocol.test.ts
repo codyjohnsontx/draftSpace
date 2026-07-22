@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { parseServerMessage } from "@draftspace/collaboration-protocol";
+import { parseClientMessage, parseServerMessage } from "@draftspace/collaboration-protocol";
 import { PARTICIPANT_PROFILE_KEY, loadParticipantProfile, saveParticipantProfile } from "@/features/collaboration/participant-profile";
 import { createBoard } from "@/core/board/factory";
 
@@ -21,14 +21,27 @@ describe("collaboration protocol", () => {
     expect(parseServerMessage({ type: "presence.update", participantId: "guest", presence: { cursor: null, selectedElementIds: [], selectionCount: 0, activeTool: "select" } })).not.toBeNull();
   });
 
+  it("bounds participant and command identifiers in host messages", () => {
+    expect(parseClientMessage({ type: "host.admit", participantId: "guest", role: "viewer" })).not.toBeNull();
+    expect(parseClientMessage({ type: "host.admit", participantId: "", role: "viewer" })).toBeNull();
+    expect(parseClientMessage({ type: "host.kick", participantId: "x".repeat(129) })).toBeNull();
+    expect(parseClientMessage({ type: "command.reject", participantId: "guest", commandId: "", reason: "No" })).toBeNull();
+  });
+
   it("stores only a validated participant profile without changing board serialization", () => {
     const board = createBoard(); const before = JSON.stringify(board);
     const profile = saveParticipantProfile("  Cody  ");
+    expect(profile).not.toBeNull();
     expect(loadParticipantProfile()).toEqual(profile);
-    expect(profile.displayName).toBe("Cody");
+    expect(profile?.displayName).toBe("Cody");
     expect(JSON.stringify(board)).toBe(before);
 
     localStorage.setItem(PARTICIPANT_PROFILE_KEY, JSON.stringify({ displayName: "Missing identity" }));
     expect(loadParticipantProfile()).toBeNull();
+  });
+
+  it("fails invalid participant names without throwing or persisting them", () => {
+    expect(saveParticipantProfile("   ")).toBeNull();
+    expect(localStorage.getItem(PARTICIPANT_PROFILE_KEY)).toBeNull();
   });
 });
