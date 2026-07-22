@@ -42,10 +42,10 @@ export const clientMessageSchema = z.discriminatedUnion("type", [
   z.object({ type: z.literal("host.end") }),
   z.object({ type: z.literal("presence.update"), presence: presenceSchema }),
   z.object({ type: z.literal("command.propose"), proposal: commandProposalSchema }),
-  z.object({ type: z.literal("command.accept"), participantId: z.string(), proposal: commandProposalSchema }),
+  z.object({ type: z.literal("command.accept"), participantId: z.string().min(1).max(128), proposal: commandProposalSchema }),
   z.object({ type: z.literal("command.reject"), participantId: z.string().min(1).max(128), commandId: z.string().min(1).max(128), reason: z.string().max(200) }),
   z.object({ type: z.literal("snapshot.request") }),
-  z.object({ type: z.literal("snapshot.response"), participantId: z.string(), board: z.unknown(), roomRevision: z.number().int().nonnegative() }),
+  z.object({ type: z.literal("snapshot.response"), participantId: z.string().min(1).max(128), board: z.unknown(), roomRevision: z.number().int().nonnegative() }),
   z.object({ type: z.literal("room.leave") }),
   z.object({ type: z.literal("ping") }),
 ]);

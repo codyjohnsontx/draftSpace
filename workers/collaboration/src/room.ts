@@ -7,7 +7,11 @@ type RoomMetadata = { roomId: string; hostTokenHash: string; roomRevision: numbe
 type Attachment = { connectionId: string; participantId: string; authenticated: boolean; role: ParticipantRole | "pending"; profile?: ParticipantProfile; messageWindowStartedAt?: number; messageCount?: number; lastPresenceAt?: number; superseded?: boolean };
 
 const json = (value: unknown, status = 200) => new Response(JSON.stringify(value), { status, headers: { "content-type": "application/json" } });
-const numberEnv = (value: string | undefined, fallback: number) => { const parsed = Number(value); return Number.isFinite(parsed) ? parsed : fallback; };
+export const numberEnv = (value: string | undefined, fallback: number) => {
+  if (!value?.trim()) return fallback;
+  const parsed = Number(value);
+  return Number.isFinite(parsed) ? parsed : fallback;
+};
 
 export class Room extends DurableObject<Env> {
   private metadata: RoomMetadata | null = null;

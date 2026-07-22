@@ -26,6 +26,8 @@ describe("collaboration protocol", () => {
     expect(parseClientMessage({ type: "host.admit", participantId: "", role: "viewer" })).toBeNull();
     expect(parseClientMessage({ type: "host.kick", participantId: "x".repeat(129) })).toBeNull();
     expect(parseClientMessage({ type: "command.reject", participantId: "guest", commandId: "", reason: "No" })).toBeNull();
+    expect(parseClientMessage({ type: "command.accept", participantId: "", proposal: { protocolVersion: 1, commandId: "command", boardId: "board", actorId: "actor", baseRevision: 0, command: {}, metadata: { label: "Edit", intent: "move" } } })).toBeNull();
+    expect(parseClientMessage({ type: "snapshot.response", participantId: "x".repeat(129), board: {}, roomRevision: 0 })).toBeNull();
   });
 
   it("stores only a validated participant profile without changing board serialization", () => {

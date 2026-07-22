@@ -1,6 +1,6 @@
 import { env, runInDurableObject, SELF } from "cloudflare:test";
 import { describe, expect, it } from "vitest";
-import type { Room } from "../src/room";
+import { numberEnv, type Room } from "../src/room";
 import type { ClientMessage, ServerMessage } from "@draftspace/collaboration-protocol";
 import { tokenHash, tokenMatchesHash } from "../src/security";
 
@@ -35,6 +35,14 @@ function nextMessage(socket: WebSocket, type: ServerMessage["type"]): Promise<Se
 function send(socket: WebSocket, message: ClientMessage) { socket.send(JSON.stringify(message)); }
 
 describe("collaboration room worker", () => {
+  it("uses safe numeric defaults for blank and invalid configuration", () => {
+    expect(numberEnv(undefined, 100)).toBe(100);
+    expect(numberEnv("", 100)).toBe(100);
+    expect(numberEnv("   ", 100)).toBe(100);
+    expect(numberEnv("invalid", 100)).toBe(100);
+    expect(numberEnv("42", 100)).toBe(42);
+  });
+
   it("compares host token digests without comparing their hex strings", async () => {
     const hash = await tokenHash("host-secret");
     expect(await tokenMatchesHash("host-secret", hash)).toBe(true);
