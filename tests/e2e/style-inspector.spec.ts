@@ -63,6 +63,8 @@ test("styles a selected shape with one-entry continuous edits", async ({ browser
 
   await expect.poll(async () => Object.values(await readStoredElements(page))[0]).toMatchObject({ fillColor: "#4f6fa8", strokeColor: "#7b5f86", strokeWidth: 4, strokeStyle: "dotted", opacity: .45, cornerRadius: 36 });
   await page.reload();
+  // The board rehydrates from IndexedDB after mount, so the click needs the shape to exist first.
+  await expect(page.getByRole("main", { name: "Draftspace infinite canvas" })).toHaveAttribute("data-element-count", "1");
   await page.mouse.click(350, 240);
   await expect(page.getByRole("button", { name: "Set fill to Blue" })).toHaveAttribute("aria-pressed", "true");
   await expect(page.getByRole("slider", { name: "Opacity" })).toHaveAttribute("aria-valuetext", "45%");

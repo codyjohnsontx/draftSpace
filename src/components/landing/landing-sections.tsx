@@ -27,7 +27,7 @@ const SECTIONS: SectionCopy[] = [
     id: "design",
     eyebrow: "03 — Design",
     heading: "The system takes shape.",
-    body: "Boxes become services. A glowing thread traces one request through gateway, cache, and store — your diagram, running.",
+    body: "Boxes become services. A glowing thread traces one request through gateway, cache, and store. Your diagram, running.",
     align: "right",
   },
   {
@@ -52,7 +52,7 @@ export function LandingSections() {
           <span className="landing-eyebrow">A canvas for systems</span>
           <h1>It starts as a mess.</h1>
           <p>
-            Every architecture begins as scattered thoughts — boxes, blobs,
+            Every architecture begins as scattered thoughts: boxes, blobs,
             half-ideas. Draftspace gives the mess somewhere to become a system.
           </p>
           <span className="landing-scroll-hint" aria-hidden="true">Scroll</span>
