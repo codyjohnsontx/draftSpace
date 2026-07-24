@@ -1,6 +1,7 @@
 import type { Draft } from "immer";
 import type { BoardDocument } from "@/core/board/types";
 import type { CanvasElement, Connector, ConnectorMutablePatch } from "@/core/elements/types";
+import { connectorsTouching } from "@/core/connectors/routing";
 import type { BoardCommand, BoardUpdatePatch, ElementMutablePatch } from "./board-command";
 
 const mutableElementKeys = [
@@ -121,10 +122,7 @@ export function applyBoardCommand(board: Draft<BoardDocument>, command: BoardCom
     board.elementIds = board.elementIds.filter((id) => !deleted.has(id));
     deleted.forEach((id) => { delete board.elements[id]; });
     // A connector without both endpoints is meaningless; deleting a shape takes its edges with it.
-    const orphaned = board.connectorIds.filter((id) => {
-      const connector = board.connectors[id];
-      return connector && (deleted.has(connector.from.elementId) || deleted.has(connector.to.elementId));
-    });
+    const orphaned = connectorsTouching(board, deleted);
     if (orphaned.length) {
       const orphanedSet = new Set(orphaned);
       board.connectorIds = board.connectorIds.filter((id) => !orphanedSet.has(id));

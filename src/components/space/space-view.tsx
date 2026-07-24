@@ -4,9 +4,16 @@ import { useEffect, useRef, useState } from "react";
 import * as THREE from "three";
 import { useBoardStore } from "@/stores/board-store";
 import { useSessionStore } from "@/stores/session-store";
+import { useCollaborationStore } from "@/stores/collaboration-store";
 import { snapValue } from "@/core/geometry/snapping";
-import { createSpaceScene, worldToBoard, type SpaceScene } from "@/features/space/scene";
+import { createSpaceScene, worldToBoard, TIER_HEIGHT, type SpaceScene } from "@/features/space/scene";
 import type { PortSide } from "@/core/elements/types";
+
+/** Mirrors CanvasWorkspace: guests may only edit once admitted as an editor. */
+function guestCanEdit(): boolean {
+  const { mode, status, role } = useCollaborationStore.getState();
+  return mode !== "guest" || (status === "connected" && role === "editor");
+}
 
 type DragState =
   | { mode: "node"; elementId: string; offsetX: number; offsetY: number; tierY: number; moved: boolean }
@@ -80,7 +87,7 @@ export function SpaceView() {
     }
 
     const hit = scene.pick(ndc);
-    if (hit?.kind === "port") {
+    if (hit?.kind === "port" && guestCanEdit()) {
       dragRef.current = { mode: "connect", elementId: hit.elementId, side: hit.side };
       return;
     }
@@ -89,8 +96,8 @@ export function SpaceView() {
       const element = board?.elements[hit.elementId];
       if (!element) return;
       useSessionStore.getState().setSelected([hit.elementId]);
-      if (element.locked) return;
-      const tierY = element.layer * 3;
+      if (element.locked || !guestCanEdit()) return;
+      const tierY = element.layer * TIER_HEIGHT;
       const ground = scene.groundPoint(ndc, tierY);
       if (!ground) return;
       const pointer = worldToBoard(ground);
@@ -156,7 +163,7 @@ export function SpaceView() {
     if (drag.mode === "connect") {
       scene.setConnectGhost(null);
       const hit = scene.pick(toNdc(event));
-      if (hit && hit.elementId !== drag.elementId) {
+      if (hit && hit.elementId !== drag.elementId && guestCanEdit()) {
         useBoardStore.getState().createConnector({ elementId: drag.elementId, port: drag.side }, { elementId: hit.elementId, port: "auto" });
       }
       return;
@@ -175,23 +182,31 @@ export function SpaceView() {
         x = snapValue(x, board.preferences.gridSize);
         y = snapValue(y, board.preferences.gridSize);
       }
-      if (x !== element.x || y !== element.y) {
+      if ((x !== element.x || y !== element.y) && guestCanEdit()) {
         useBoardStore.getState().updateElements([{ elementId: drag.elementId, patch: { x, y } }], "Move shape", "move");
       }
     }
   };
 
-  const onWheel = (event: React.WheelEvent<HTMLCanvasElement>) => {
-    const scene = sceneRef.current;
-    if (!scene) return;
-    const view = scene.getView();
-    if (event.ctrlKey || event.metaKey) {
-      scene.setView({ pixelsPerUnit: Math.min(80, Math.max(6, view.pixelsPerUnit * (event.deltaY > 0 ? 0.92 : 1.08))) });
-      return;
-    }
-    const perPixel = 1 / view.pixelsPerUnit;
-    scene.setView({ targetX: view.targetX + event.deltaX * perPixel, targetZ: view.targetZ + event.deltaY * perPixel });
-  };
+  // Native, non-passive so we can preventDefault the browser's zoom/scroll gesture over the canvas.
+  useEffect(() => {
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+    const onWheel = (event: WheelEvent) => {
+      const scene = sceneRef.current;
+      if (!scene) return;
+      event.preventDefault();
+      const view = scene.getView();
+      if (event.ctrlKey || event.metaKey) {
+        scene.setView({ pixelsPerUnit: Math.min(80, Math.max(6, view.pixelsPerUnit * (event.deltaY > 0 ? 0.92 : 1.08))) });
+        return;
+      }
+      const perPixel = 1 / view.pixelsPerUnit;
+      scene.setView({ targetX: view.targetX + event.deltaX * perPixel, targetZ: view.targetZ + event.deltaY * perPixel });
+    };
+    canvas.addEventListener("wheel", onWheel, { passive: false });
+    return () => canvas.removeEventListener("wheel", onWheel);
+  }, []);
 
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
@@ -217,7 +232,6 @@ export function SpaceView() {
         onPointerDown={onPointerDown}
         onPointerMove={onPointerMove}
         onPointerUp={onPointerUp}
-        onWheel={onWheel}
         onContextMenu={(event) => event.preventDefault()}
       />
       {ready === "fallback" && <p className="space-fallback">This browser cannot create a 3D view. The 2D canvas still has everything.</p>}

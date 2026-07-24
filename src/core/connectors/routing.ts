@@ -5,6 +5,14 @@ import { portDirection, portPoint, resolveConnectorPorts } from "./ports";
 /** How far a connector travels perpendicular to a shape before it may bend. */
 export const PORT_STUB = 24;
 
+/** Connector IDs whose endpoints reference any of the given (typically deleted) element IDs. */
+export function connectorsTouching(board: Pick<BoardDocument, "connectorIds" | "connectors">, elementIds: Set<string>): string[] {
+  return board.connectorIds.filter((id) => {
+    const connector = board.connectors[id];
+    return connector && (elementIds.has(connector.from.elementId) || elementIds.has(connector.to.elementId));
+  });
+}
+
 const isHorizontal = (side: PortSide) => side === "e" || side === "w";
 
 const shift = (point: Point, side: PortSide, distance: number): Point => {

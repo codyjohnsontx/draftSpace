@@ -1,6 +1,7 @@
 import { create } from "zustand";
 import type { BoardDocument } from "@/core/board/types";
-import type { Bounds, CanvasElement, ConnectorEndpoint, ConnectorKind, ConnectorMutablePatch, ShapeStylePatch, ShapeType } from "@/core/elements/types";
+import type { Bounds, CanvasElement, ConnectorEndpoint, ConnectorKind, ShapeStylePatch, ShapeType } from "@/core/elements/types";
+import { connectorsTouching } from "@/core/connectors/routing";
 import type { Viewport } from "@/core/board/types";
 import { createBoard, createConnector, createShape, newId, now } from "@/core/board/factory";
 import { emptyHistory, transact, type HistoryEntry, type HistoryState } from "@/features/history/history";
@@ -34,10 +35,12 @@ type BoardStore = {
   redo: (actorId?: string) => void;
 };
 
-function pickElementPatch(element: CanvasElement, patch: ElementMutablePatch): ElementMutablePatch {
+/** Returns the target's current values for exactly the keys present in `patch` — the inverse of applying it. */
+function pickPatch<Patch extends object>(target: object, patch: Patch): Patch {
+  const source = target as Record<string, unknown>;
   const result: Record<string, unknown> = {};
-  Object.keys(patch).forEach((key) => { result[key] = (element as unknown as Record<string, unknown>)[key]; });
-  return result as ElementMutablePatch;
+  Object.keys(patch).forEach((key) => { result[key] = source[key]; });
+  return result as Patch;
 }
 
 function inverseBoardPatch(board: BoardDocument, patch: BoardUpdatePatch): BoardUpdatePatch {
@@ -53,10 +56,7 @@ function createInverseCommand(board: BoardDocument, command: BoardCommand): Boar
     const elements = command.elementIds.flatMap((id) => board.elements[id] ? [board.elements[id]] : []);
     // The apply cascades away connectors touching these elements, so the inverse restores them too.
     const deletedIds = new Set(elements.map((element) => element.id));
-    const cascaded = board.connectorIds.filter((id) => {
-      const connector = board.connectors[id];
-      return connector && (deletedIds.has(connector.from.elementId) || deletedIds.has(connector.to.elementId));
-    });
+    const cascaded = connectorsTouching(board, deletedIds);
     return {
       type: "elements.create",
       elements,
@@ -69,7 +69,7 @@ function createInverseCommand(board: BoardDocument, command: BoardCommand): Boar
   }
   if (command.type === "elements.update") return { type: "elements.update", updates: command.updates.flatMap(({ elementId, patch }) => {
     const element = board.elements[elementId];
-    return element ? [{ elementId, patch: pickElementPatch(element, patch), expected: patch }] : [];
+    return element ? [{ elementId, patch: pickPatch(element, patch), expected: patch }] : [];
   }) };
   if (command.type === "connectors.create") return { type: "connectors.delete", connectorIds: command.connectors.map((connector) => connector.id), expectedConnectors: Object.fromEntries(command.connectors.map((connector) => [connector.id, connector])) };
   if (command.type === "connectors.delete") {
@@ -78,10 +78,7 @@ function createInverseCommand(board: BoardDocument, command: BoardCommand): Boar
   }
   if (command.type === "connectors.update") return { type: "connectors.update", updates: command.updates.flatMap(({ connectorId, patch }) => {
     const connector = board.connectors[connectorId];
-    if (!connector) return [];
-    const inverse: Record<string, unknown> = {};
-    Object.keys(patch).forEach((key) => { inverse[key] = (connector as unknown as Record<string, unknown>)[key]; });
-    return [{ connectorId, patch: inverse as ConnectorMutablePatch, expected: patch }];
+    return connector ? [{ connectorId, patch: pickPatch(connector, patch), expected: patch }] : [];
   }) };
   return { type: "board.update", patch: inverseBoardPatch(board, command.patch), expected: command.patch };
 }

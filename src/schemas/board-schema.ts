@@ -108,4 +108,14 @@ export const boardSchema = z.object({
 }).superRefine((board, ctx) => {
   validateElementOrder(board, ctx);
   validateOrder({ orderIds: board.connectorIds, items: board.connectors, noun: "Connector" }, ctx);
+  // Every connector endpoint must reference a real element.
+  for (const id of board.connectorIds) {
+    const connector = board.connectors[id];
+    if (!connector) continue;
+    for (const endpoint of [connector.from, connector.to]) {
+      if (!Object.prototype.hasOwnProperty.call(board.elements, endpoint.elementId)) {
+        ctx.addIssue({ code: "custom", message: `Connector ${id} references missing element ${endpoint.elementId}` });
+      }
+    }
+  }
 });

@@ -1,8 +1,11 @@
 "use client";
 
 import { CanvasWorkspace } from "@/components/canvas/canvas-workspace";
-import { SpaceView } from "@/components/space/space-view";
+import dynamic from "next/dynamic";
 import { TopBar } from "./top-bar";
+
+// The 3D space is client-only (WebGL, window) and its Three.js bundle only loads when opened.
+const SpaceView = dynamic(() => import("@/components/space/space-view").then((module) => module.SpaceView), { ssr: false });
 import { useBoardPersistence } from "@/hooks/use-board-persistence";
 import { useEffect, useState } from "react";
 import { usePersistenceStore } from "@/stores/persistence-store";

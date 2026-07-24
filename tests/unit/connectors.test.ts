@@ -40,6 +40,20 @@ describe("board migration to v3", () => {
   });
 });
 
+describe("board schema connector references", () => {
+  it("rejects a connector whose endpoint element is missing", () => {
+    const { board, a, b } = boardWithTwoShapes();
+    const connector = createConnector({ elementId: a.id, port: "auto" }, { elementId: b.id, port: "auto" });
+    board.connectorIds.push(connector.id); board.connectors[connector.id] = connector;
+    expect(boardSchema.safeParse(board).success).toBe(true);
+    delete board.elements[b.id];
+    board.elementIds = board.elementIds.filter((id) => id !== b.id);
+    const result = boardSchema.safeParse(board);
+    expect(result.success).toBe(false);
+    if (!result.success) expect(result.error.issues.some((issue) => issue.message.includes("references missing element"))).toBe(true);
+  });
+});
+
 describe("connector commands", () => {
   it("creates and deletes connectors through parseable commands", () => {
     const { board, a, b } = boardWithTwoShapes();
