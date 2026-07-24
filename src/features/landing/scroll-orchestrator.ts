@@ -45,7 +45,8 @@ export function createScrollOrchestrator(options: {
         y: 46,
         duration: 0.9,
         ease: "power3.out",
-        scrollTrigger: { trigger: copy, start: "top 80%", toggleActions: "play none none reverse" },
+        // Fade back out before the copy reaches the fixed header.
+        scrollTrigger: { trigger: copy, start: "top 80%", end: "bottom 36%", toggleActions: "play reverse play reverse" },
       });
     }
   }, root);

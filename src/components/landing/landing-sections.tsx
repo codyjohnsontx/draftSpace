@@ -10,32 +10,32 @@ type SectionCopy = {
 
 const SECTIONS: SectionCopy[] = [
   {
-    id: "sketch",
-    eyebrow: "01 — Sketch",
-    heading: "Sketch at the speed of thought.",
-    body: "Drop a shape, drag it into place, snap it to the grid. No accounts, no friction — boards live on your machine and load instantly.",
-    align: "left",
-  },
-  {
-    id: "connect",
-    eyebrow: "02 — Connect",
-    heading: "Connect the pieces.",
-    body: "Link steps into workflows and schemas. One glowing thread ties the story together, so anyone can follow the flow at a glance.",
+    id: "gather",
+    eyebrow: "01 — Gather",
+    heading: "Ideas find each other.",
+    body: "Drag, sort, group. Loose thoughts drift into themes before you've even named them.",
     align: "right",
   },
   {
-    id: "arrange",
-    eyebrow: "03 — Arrange",
-    heading: "Order out of chaos.",
-    body: "Scattered notes become tidy structure. Alignment, snapping, and clean geometry keep even the messiest thinking presentable.",
+    id: "align",
+    eyebrow: "02 — Align",
+    heading: "Structure clicks into place.",
+    body: "Snap to the grid and the noise becomes intent. Suddenly the mess reads like a plan.",
     align: "left",
   },
   {
-    id: "collaborate",
-    eyebrow: "04 — Collaborate",
-    heading: "Draft together, live.",
-    body: "Share a room code and sketch with up to four people at once — cursors, selections, and all. No sign-up required.",
+    id: "design",
+    eyebrow: "03 — Design",
+    heading: "The system takes shape.",
+    body: "Boxes become services. A glowing thread traces one request through gateway, cache, and store — your diagram, running.",
     align: "right",
+  },
+  {
+    id: "discuss",
+    eyebrow: "04 — Discuss",
+    heading: "Argue it into shape, together.",
+    body: "Share a room and redesign live: split the monolith, reroute the flow, and watch the thread follow the argument.",
+    align: "left",
   },
 ];
 
@@ -49,18 +49,23 @@ export function LandingSections() {
 
       <section className="landing-section landing-section--hero" data-section="hero">
         <div className="landing-copy landing-copy--hero">
-          <span className="landing-eyebrow">A calm infinite canvas</span>
-          <h1>Think in shapes.</h1>
+          <span className="landing-eyebrow">A canvas for systems</span>
+          <h1>It starts as a mess.</h1>
           <p>
-            Draftspace turns rough ideas into clear workflows and schemas —
-            here, stretched into a third dimension you can fly through.
+            Every architecture begins as scattered thoughts — boxes, blobs,
+            half-ideas. Draftspace gives the mess somewhere to become a system.
           </p>
           <span className="landing-scroll-hint" aria-hidden="true">Scroll</span>
         </div>
       </section>
 
       {SECTIONS.map((section) => (
-        <section key={section.id} className="landing-section" data-section={section.id} data-align={section.align}>
+        <section
+          key={section.id}
+          className="landing-section landing-section--tall"
+          data-section={section.id}
+          data-align={section.align}
+        >
           <div className="landing-copy">
             <span className="landing-eyebrow">{section.eyebrow}</span>
             <h2>{section.heading}</h2>
@@ -72,8 +77,8 @@ export function LandingSections() {
       <section className="landing-section landing-section--cta" data-section="cta">
         <div className="landing-copy landing-copy--cta">
           <span className="landing-eyebrow">05 — Begin</span>
-          <h2>Your canvas is waiting.</h2>
-          <p>Everything you just flew over is one click away. Open a board of your own, or hop into a friend&apos;s room.</p>
+          <h2>From mess to blueprint.</h2>
+          <p>That&apos;s the whole product. Open a board, make your own mess, and we&apos;ll help it click into place.</p>
           <div className="landing-cta-row">
             <Link href="/" className="landing-cta landing-cta--primary">Open the canvas</Link>
             <Link href="/join" className="landing-cta landing-cta--secondary">Join a room</Link>

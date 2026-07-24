@@ -5,17 +5,24 @@ import { UnrealBloomPass } from "three/addons/postprocessing/UnrealBloomPass.js"
 import { OutputPass } from "three/addons/postprocessing/OutputPass.js";
 import { disposeObject3D } from "@/features/scene3d/dispose";
 import { buildLandingWorld, WORLD_COLORS } from "./world";
-import { createGlowPath, pathProgressFor } from "./glow-path";
 import { createCameraRig, type CameraKeyframe } from "./camera-rig";
 
-/** One framing per section boundary; sections are 100svh so boundaries land at i/5. */
+/**
+ * One stage, one story: the camera starts high and off-axis over the chaos,
+ * swings while the shapes cluster, and rotates into exact grid alignment at
+ * the same moment the shapes snap — then settles in to watch the system run.
+ * Beat boundaries land at cumulative section heights over ~8 viewports.
+ */
 const CAMERA_KEYFRAMES: CameraKeyframe[] = [
-  { at: 0.0, position: [-20, 33, 46], lookAt: [10, 0, -3] },
-  { at: 0.2, position: [-12, 15, 25], lookAt: [0, 0.5, -1] },
-  { at: 0.4, position: [21, 13, 10], lookAt: [34.5, 0.8, -7.5] },
-  { at: 0.6, position: [54, 17, 24], lookAt: [68, 0, 6] },
-  { at: 0.8, position: [88, 10, 8], lookAt: [100, 1, -5.5] },
-  { at: 1.0, position: [38, 60, 68], lookAt: [52, 0, 0] },
+  { at: 0.0, position: [17, 23, 29], lookAt: [1, 0, -1] },
+  { at: 0.143, position: [-15, 17, 23], lookAt: [2, 0, 1] },
+  { at: 0.3, position: [-11, 23, 25], lookAt: [-1, 0, 0] },
+  { at: 0.5, position: [0, 24, 27], lookAt: [0, 0, 0] },
+  { at: 0.571, position: [0, 21, 26], lookAt: [0, 0, 0] },
+  { at: 0.7, position: [6, 15, 23], lookAt: [1, 0, 0] },
+  { at: 0.786, position: [11, 11, 17], lookAt: [1, 0.4, 1] },
+  { at: 0.92, position: [6, 14, 21], lookAt: [0, 0, 0] },
+  { at: 1.0, position: [0, 31, 39], lookAt: [0, 0, -1] },
 ];
 
 export type LandingScene = {
@@ -34,7 +41,7 @@ export function createLandingScene(canvas: HTMLCanvasElement): LandingScene {
 
   const scene = new THREE.Scene();
   scene.background = new THREE.Color(WORLD_COLORS.background);
-  scene.fog = new THREE.Fog(WORLD_COLORS.background, 62, 240);
+  scene.fog = new THREE.Fog(WORLD_COLORS.background, 55, 190);
 
   const camera = new THREE.PerspectiveCamera(34, 1, 0.5, 420);
 
@@ -46,8 +53,6 @@ export function createLandingScene(canvas: HTMLCanvasElement): LandingScene {
 
   const world = buildLandingWorld();
   scene.add(world.group);
-  const glowPath = createGlowPath(world.pathPoints, WORLD_COLORS.accent);
-  scene.add(glowPath.group);
   const rig = createCameraRig(camera, CAMERA_KEYFRAMES);
 
   const renderTarget = new THREE.WebGLRenderTarget(1, 1, { type: THREE.HalfFloatType, samples: 4 });
@@ -60,16 +65,23 @@ export function createLandingScene(canvas: HTMLCanvasElement): LandingScene {
   let progress = 0;
   let lastElapsed = 0;
 
+  // Subtle pointer parallax keeps the stage alive between scrolls.
+  const parallaxTarget = new THREE.Vector2();
+  const parallax = new THREE.Vector2();
+  const onPointerMove = (event: PointerEvent) => {
+    parallaxTarget.set((event.clientX / window.innerWidth) * 2 - 1, (event.clientY / window.innerHeight) * 2 - 1);
+  };
+  window.addEventListener("pointermove", onPointerMove);
+
   function setProgress(next: number): void {
     progress = THREE.MathUtils.clamp(next, 0, 1);
-    rig.setProgress(progress);
-    glowPath.setProgress(pathProgressFor(progress));
   }
 
   function render(elapsedSeconds: number): void {
     lastElapsed = elapsedSeconds;
+    parallax.lerp(parallaxTarget, 0.05);
+    rig.setProgress(progress, parallax.x * 1.15, -parallax.y * 0.65);
     world.update(elapsedSeconds, progress);
-    glowPath.update(elapsedSeconds);
     composer.render();
   }
 
@@ -99,9 +111,11 @@ export function createLandingScene(canvas: HTMLCanvasElement): LandingScene {
   camera.updateProjectionMatrix();
   composer.setSize(width, height);
   setProgress(0);
+  rig.setProgress(0);
 
   function dispose(): void {
     window.removeEventListener("resize", onWindowResize);
+    window.removeEventListener("pointermove", onPointerMove);
     clearTimeout(resizeTimer);
     disposeObject3D(scene);
     composer.dispose();
