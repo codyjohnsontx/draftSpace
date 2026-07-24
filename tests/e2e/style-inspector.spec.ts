@@ -1,5 +1,9 @@
 import { expect, test, type Page } from "@playwright/test";
 
+// The inspector's settle-in animations make swatches "not stable" under slow CI rendering;
+// reduced motion disables them via the app's global reduce-motion CSS without changing behavior.
+test.use({ reducedMotion: "reduce" });
+
 async function setRange(page: Page, name: string, value: number) {
   const slider = page.getByRole("slider", { name });
   await slider.evaluate((element, nextValue) => {
