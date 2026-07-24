@@ -549,13 +549,19 @@ export function buildLandingWorld(): LandingWorld {
     head.update(elapsedSeconds);
 
     // Node pulses as the request passes each station, keyed to whichever route
-    // the head is currently travelling (routeA while tracing, routeB ambient).
+    // the head is currently travelling: routeA while tracing, then seg2b during
+    // the reroute — mapped into routeB parameter space, since the head covers
+    // that segment alone — and routeB once the ambient loop takes over.
+    const rerouting = rewire > 0 && rewire < 1;
     const ambient = sceneProgress >= 0.955;
-    const activeU = trace > 0 && trace < 1 ? trace : ambient ? (elapsedSeconds * 0.07) % 1 : null;
+    let activeU: number | null = null;
+    if (trace > 0 && trace < 1) activeU = trace;
+    else if (rerouting) activeU = (routeB.lengths[0] + rewire * routeB.lengths[1]) / routeB.total;
+    else if (ambient) activeU = (elapsedSeconds * 0.07) % 1;
     for (const track of tracks) {
       if (!track.fillMaterial || track.spec.role === "ensemble") continue;
       let intensity = 0;
-      const hop = ambient ? track.hopUB : track.hopU;
+      const hop = rerouting || ambient ? track.hopUB : track.hopU;
       if (activeU !== null && hop !== null) {
         const distance = Math.abs(activeU - hop);
         intensity = Math.max(0, 1 - distance * 14) * 0.55;
