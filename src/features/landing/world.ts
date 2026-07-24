@@ -239,7 +239,7 @@ export function buildLandingWorld(): LandingWorld {
     const [cx, cz] = clusterCenters[spec.type];
     const clusterSlot = clusterCounts[spec.type];
     clusterCounts[spec.type] += 1;
-    const clusterRadius = 2.15 * Math.sqrt(clusterSlot + 0.4);
+    const clusterRadius = 2.6 * Math.sqrt(clusterSlot + 0.4);
     const clusterAngle = clusterSlot * 2.39996 + seeded(index, 8) * 0.5;
 
     let fillMaterial: THREE.MeshStandardMaterial | null = null;
@@ -442,8 +442,14 @@ export function buildLandingWorld(): LandingWorld {
       const tiltZ = THREE.MathUtils.lerp(chaos.tiltZ - tumble, 0, land);
       let spin = THREE.MathUtils.lerp(chaos.spin, cluster.spin, drift);
 
+      // Overlapping shapes read as stacked paper, not coplanar z-fighting: every
+      // shape keeps a hair of unique height, plus a pile lift while clustered.
+      const paper = seeded(i, 13);
+      y += 0.012 + paper * 0.05;
+
       // Stage 2: cluster -> grid, staggered snap with a squash on landing.
       const snapT = smooth(THREE.MathUtils.clamp((snapWindow - track.snapDelay) / 0.42, 0, 1));
+      y += drift * (1 - snapT) * paper * 0.28;
       x = THREE.MathUtils.lerp(x, grid.x, snapT);
       z = THREE.MathUtils.lerp(z, grid.z, snapT);
       spin = THREE.MathUtils.lerp(spin, 0, snapT);
@@ -567,11 +573,11 @@ export function buildLandingWorld(): LandingWorld {
       let cy = THREE.MathUtils.lerp(6.5, 1.5, arrive);
       if (index === 0) {
         // The terracotta cursor grabs the second monolith half and pulls it away.
-        const grabX = 1.1;
+        const grabBlend = drag > 0 ? 1 : smooth(THREE.MathUtils.clamp((sceneProgress - 0.835) / 0.015, 0, 1));
         const grabZ = THREE.MathUtils.lerp(1.45, 2.9, drag) + 0.9;
-        cx = THREE.MathUtils.lerp(cx, grabX, drag > 0 ? 1 : smooth(THREE.MathUtils.clamp((sceneProgress - 0.835) / 0.015, 0, 1)));
-        cz = THREE.MathUtils.lerp(cz, grabZ, drag > 0 ? 1 : smooth(THREE.MathUtils.clamp((sceneProgress - 0.835) / 0.015, 0, 1)));
-        cy = drag > 0 && drag < 1 ? 0.9 : cy;
+        cx = THREE.MathUtils.lerp(cx, 1.1, grabBlend);
+        cz = THREE.MathUtils.lerp(cz, grabZ, grabBlend);
+        cy = THREE.MathUtils.lerp(cy, 1.3, grabBlend); // hovers clear of the box top while gripping
       }
       cursor.holder.position.set(cx, cy, cz);
       cursor.holder.rotation.y = Math.sin(elapsedSeconds * 0.4 + cursor.phase) * 0.3 - 0.5;
