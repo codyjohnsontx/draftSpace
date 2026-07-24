@@ -1,10 +1,10 @@
-import type { CanvasElement, ElementId } from "@/core/elements/types";
+import type { CanvasElement, Connector, ConnectorId, ElementId } from "@/core/elements/types";
 
 export type Viewport = { x: number; y: number; zoom: number };
 
 export type BoardDocument = {
   fileFormat: "draftspace/board";
-  schemaVersion: 2;
+  schemaVersion: 3;
   id: string;
   name: string;
   createdAt: string;
@@ -18,6 +18,8 @@ export type BoardDocument = {
   };
   elementIds: ElementId[];
   elements: Record<ElementId, CanvasElement>;
+  connectorIds: ConnectorId[];
+  connectors: Record<ConnectorId, Connector>;
 };
 
 export type BoardSummary = Pick<BoardDocument, "id" | "name" | "createdAt" | "updatedAt"> & {

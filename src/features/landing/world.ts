@@ -2,7 +2,7 @@ import * as THREE from "three";
 import type { CanvasElement, ShapeType } from "@/core/elements/types";
 import { createShapeMesh } from "@/features/scene3d/shape-mesh";
 import { createCometHead, createGlowSegment, type GlowSegment } from "./glow-path";
-import { createDiagramLabel } from "./labels";
+import { createDiagramLabel } from "@/features/scene3d/diagram-label";
 
 export const WORLD_COLORS = {
   background: 0xf4f0e6,
@@ -63,6 +63,9 @@ type CastSpec = {
 function element(id: string, spec: CastSpec): CanvasElement {
   const base = {
     id,
+    nodeKind: "plain" as const,
+    layer: 0,
+    label: "",
     x: 0,
     y: 0,
     width: spec.width,

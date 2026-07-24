@@ -28,7 +28,12 @@ describe("stored board loading", () => {
   it("loads a current board without migration", () => { const board = createBoard(); expect(loadBoardDocument(board.id, board)).toEqual({ kind: "ready", board, migrated: false }); });
   it("migrates a version one rectangle board without mutating the raw record", () => {
     const raw = versionOneBoard(); const before = structuredClone(raw);
-    expect(loadBoardDocument(raw.id, raw)).toEqual({ kind: "ready", board: { ...raw, schemaVersion: 2 }, migrated: true });
+    const migratedElement = { ...raw.elements["legacy-rectangle"], nodeKind: "plain", layer: 0, label: "" };
+    expect(loadBoardDocument(raw.id, raw)).toEqual({
+      kind: "ready",
+      board: { ...raw, schemaVersion: 3, elements: { "legacy-rectangle": migratedElement }, connectorIds: [], connectors: {} },
+      migrated: true,
+    });
     expect(raw).toEqual(before);
   });
   it("rejects malformed version one boards without migration", () => {

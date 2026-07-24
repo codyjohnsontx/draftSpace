@@ -1,8 +1,9 @@
 import { create } from "zustand";
 import type { BoardDocument } from "@/core/board/types";
-import type { Bounds, CanvasElement, ShapeStylePatch, ShapeType } from "@/core/elements/types";
+import type { Bounds, CanvasElement, ConnectorEndpoint, ConnectorKind, ShapeStylePatch, ShapeType } from "@/core/elements/types";
+import { connectorsTouching } from "@/core/connectors/routing";
 import type { Viewport } from "@/core/board/types";
-import { createBoard, createShape, newId, now } from "@/core/board/factory";
+import { createBoard, createConnector, createShape, newId, now } from "@/core/board/factory";
 import { emptyHistory, transact, type HistoryEntry, type HistoryState } from "@/features/history/history";
 import { applyBoardCommand } from "@/core/commands/apply-board-command";
 import { canDispatchLocalCommands, getLocalActorId, localCommandMetadata, type BoardCommand, type BoardCommandIntent, type BoardCommandMetadata, type BoardUpdatePatch, type ElementMutablePatch } from "@/core/commands/board-command";
@@ -20,6 +21,8 @@ type BoardStore = {
   setBoard: (board: BoardDocument) => void;
   dispatchCommand: (command: BoardCommand, metadata: BoardCommandMetadata, origin?: "local" | "remote", recordHistory?: boolean) => DispatchedBoardCommand | null;
   createShape: (type: ShapeType, bounds: Bounds) => string | null;
+  createConnector: (from: ConnectorEndpoint, to: ConnectorEndpoint, kind?: ConnectorKind) => string | null;
+  deleteConnectors: (ids: string[]) => void;
   deleteElements: (ids: string[]) => void;
   duplicateElements: (ids: string[]) => string[];
   pasteElements: (elements: CanvasElement[]) => string[];
@@ -32,10 +35,12 @@ type BoardStore = {
   redo: (actorId?: string) => void;
 };
 
-function pickElementPatch(element: CanvasElement, patch: ElementMutablePatch): ElementMutablePatch {
+/** Returns the target's current values for exactly the keys present in `patch` — the inverse of applying it. */
+function pickPatch<Patch extends object>(target: object, patch: Patch): Patch {
+  const source = target as Record<string, unknown>;
   const result: Record<string, unknown> = {};
-  Object.keys(patch).forEach((key) => { result[key] = (element as unknown as Record<string, unknown>)[key]; });
-  return result as ElementMutablePatch;
+  Object.keys(patch).forEach((key) => { result[key] = source[key]; });
+  return result as Patch;
 }
 
 function inverseBoardPatch(board: BoardDocument, patch: BoardUpdatePatch): BoardUpdatePatch {
@@ -49,11 +54,31 @@ function createInverseCommand(board: BoardDocument, command: BoardCommand): Boar
   if (command.type === "elements.create") return { type: "elements.delete", elementIds: command.elements.map((element) => element.id), expectedElements: Object.fromEntries(command.elements.map((element) => [element.id, element])) };
   if (command.type === "elements.delete") {
     const elements = command.elementIds.flatMap((id) => board.elements[id] ? [board.elements[id]] : []);
-    return { type: "elements.create", elements, insertionIndexes: elements.map((element) => board.elementIds.indexOf(element.id)) };
+    // The apply cascades away connectors touching these elements, so the inverse restores them too.
+    const deletedIds = new Set(elements.map((element) => element.id));
+    const cascaded = connectorsTouching(board, deletedIds);
+    return {
+      type: "elements.create",
+      elements,
+      insertionIndexes: elements.map((element) => board.elementIds.indexOf(element.id)),
+      ...(cascaded.length ? {
+        connectors: cascaded.map((id) => board.connectors[id]),
+        connectorInsertionIndexes: cascaded.map((id) => board.connectorIds.indexOf(id)),
+      } : {}),
+    };
   }
   if (command.type === "elements.update") return { type: "elements.update", updates: command.updates.flatMap(({ elementId, patch }) => {
     const element = board.elements[elementId];
-    return element ? [{ elementId, patch: pickElementPatch(element, patch), expected: patch }] : [];
+    return element ? [{ elementId, patch: pickPatch(element, patch), expected: patch }] : [];
+  }) };
+  if (command.type === "connectors.create") return { type: "connectors.delete", connectorIds: command.connectors.map((connector) => connector.id), expectedConnectors: Object.fromEntries(command.connectors.map((connector) => [connector.id, connector])) };
+  if (command.type === "connectors.delete") {
+    const connectors = command.connectorIds.flatMap((id) => board.connectors[id] ? [board.connectors[id]] : []);
+    return { type: "connectors.create", connectors, insertionIndexes: connectors.map((connector) => board.connectorIds.indexOf(connector.id)) };
+  }
+  if (command.type === "connectors.update") return { type: "connectors.update", updates: command.updates.flatMap(({ connectorId, patch }) => {
+    const connector = board.connectors[connectorId];
+    return connector ? [{ connectorId, patch: pickPatch(connector, patch), expected: patch }] : [];
   }) };
   return { type: "board.update", patch: inverseBoardPatch(board, command.patch), expected: command.patch };
 }
@@ -66,6 +91,14 @@ function createRedoCommand(command: BoardCommand, inverse: BoardCommand): BoardC
   if (command.type === "elements.update" && inverse.type === "elements.update") {
     const expected = new Map(inverse.updates.map((update) => [update.elementId, update.patch]));
     return { ...command, updates: command.updates.map((update) => ({ ...update, expected: expected.get(update.elementId) })) };
+  }
+  if (command.type === "connectors.delete") {
+    const restored = inverse.type === "connectors.create" ? inverse.connectors : [];
+    return { ...command, expectedConnectors: Object.fromEntries(restored.map((connector) => [connector.id, connector])) };
+  }
+  if (command.type === "connectors.update" && inverse.type === "connectors.update") {
+    const expected = new Map(inverse.updates.map((update) => [update.connectorId, update.patch]));
+    return { ...command, updates: command.updates.map((update) => ({ ...update, expected: expected.get(update.connectorId) })) };
   }
   if (command.type === "board.update" && inverse.type === "board.update") return { ...command, expected: inverse.patch };
   return command;
@@ -107,6 +140,13 @@ export const useBoardStore = create<BoardStore>((set, get) => ({
     const element = createShape(type, bounds);
     return get().dispatchCommand({ type: "elements.create", elements: [element] }, localCommandMetadata(`Create ${type}`, "create")) ? element.id : null;
   },
+  createConnector: (from, to, kind = "sync") => {
+    const board = get().board;
+    if (!board || !board.elements[from.elementId] || !board.elements[to.elementId] || from.elementId === to.elementId) return null;
+    const connector = createConnector(from, to, { kind });
+    return get().dispatchCommand({ type: "connectors.create", connectors: [connector] }, localCommandMetadata("Connect shapes", "create")) ? connector.id : null;
+  },
+  deleteConnectors: (ids) => { get().dispatchCommand({ type: "connectors.delete", connectorIds: ids }, localCommandMetadata("Delete connector", "delete")); },
   deleteElements: (ids) => { get().dispatchCommand({ type: "elements.delete", elementIds: ids }, localCommandMetadata("Delete selection", "delete")); },
   duplicateElements: (ids) => {
     const board = get().board; if (!board) return [];
