@@ -1,12 +1,15 @@
 import type { Draft } from "immer";
 import type { BoardDocument } from "@/core/board/types";
-import type { CanvasElement } from "@/core/elements/types";
+import type { CanvasElement, Connector, ConnectorMutablePatch } from "@/core/elements/types";
 import type { BoardCommand, BoardUpdatePatch, ElementMutablePatch } from "./board-command";
 
 const mutableElementKeys = [
   "x", "y", "width", "height", "rotation", "groupIds", "locked", "hidden", "opacity",
   "strokeColor", "strokeWidth", "strokeStyle", "fillColor", "fillStyle", "roughness", "boundTextId",
+  "nodeKind", "layer", "label",
 ] as const;
+
+const mutableConnectorKeys = ["kind", "label", "strokeColor", "strokeWidth", "locked"] as const;
 
 function valuesEqual(a: unknown, b: unknown): boolean {
   if (Array.isArray(a) && Array.isArray(b)) return a.length === b.length && a.every((value, index) => value === b[index]);
@@ -42,6 +45,44 @@ function elementsEqual(a: CanvasElement, b: CanvasElement): boolean {
   return keys.length === Object.keys(bRecord).length && keys.every((key) => valuesEqual(aRecord[key], bRecord[key]));
 }
 
+function applyConnectorPatch(connector: Draft<Connector>, patch: ConnectorMutablePatch, expected?: ConnectorMutablePatch): boolean {
+  let changed = false;
+  const target = connector as unknown as Record<string, unknown>;
+  const expectedValues = expected as Record<string, unknown> | undefined;
+  const patchValues = patch as Record<string, unknown>;
+  mutableConnectorKeys.forEach((key) => {
+    if (!(key in patchValues)) return;
+    if (expectedValues && key in expectedValues && !valuesEqual(target[key], expectedValues[key])) return;
+    if (!valuesEqual(target[key], patchValues[key])) {
+      target[key] = patchValues[key];
+      changed = true;
+    }
+  });
+  return changed;
+}
+
+function connectorsEqual(a: Connector, b: Connector): boolean {
+  return a.id === b.id && a.from.elementId === b.from.elementId && a.from.port === b.from.port
+    && a.to.elementId === b.to.elementId && a.to.port === b.to.port
+    && a.kind === b.kind && a.label === b.label && a.strokeColor === b.strokeColor
+    && a.strokeWidth === b.strokeWidth && a.locked === b.locked;
+}
+
+/** Inserts connectors whose endpoints exist; used by connectors.create and cascade-restoring elements.create. */
+function insertConnectors(board: Draft<BoardDocument>, connectors: Connector[], insertionIndexes?: number[]): boolean {
+  let changed = false;
+  connectors.forEach((connector, index) => {
+    if (board.connectors[connector.id]) return;
+    if (!board.elements[connector.from.elementId] || !board.elements[connector.to.elementId]) return;
+    const insertionIndex = insertionIndexes?.[index];
+    if (insertionIndex === undefined || !Number.isInteger(insertionIndex) || insertionIndex < 0 || insertionIndex > board.connectorIds.length) board.connectorIds.push(connector.id);
+    else board.connectorIds.splice(insertionIndex, 0, connector.id);
+    board.connectors[connector.id] = connector;
+    changed = true;
+  });
+  return changed;
+}
+
 function matchesBoardExpected(board: Draft<BoardDocument>, expected: BoardUpdatePatch | undefined, key: "name" | keyof BoardDocument["preferences"]): boolean {
   if (!expected) return true;
   if (key === "name") return expected.name === undefined || board.name === expected.name;
@@ -67,6 +108,7 @@ export function applyBoardCommand(board: Draft<BoardDocument>, command: BoardCom
       board.elements[element.id] = element;
       changed = true;
     });
+    if (command.connectors?.length && insertConnectors(board, command.connectors, command.connectorInsertionIndexes)) changed = true;
     return changed;
   }
   if (command.type === "elements.delete") {
@@ -78,7 +120,36 @@ export function applyBoardCommand(board: Draft<BoardDocument>, command: BoardCom
     if (!deleted.size) return false;
     board.elementIds = board.elementIds.filter((id) => !deleted.has(id));
     deleted.forEach((id) => { delete board.elements[id]; });
+    // A connector without both endpoints is meaningless; deleting a shape takes its edges with it.
+    const orphaned = board.connectorIds.filter((id) => {
+      const connector = board.connectors[id];
+      return connector && (deleted.has(connector.from.elementId) || deleted.has(connector.to.elementId));
+    });
+    if (orphaned.length) {
+      const orphanedSet = new Set(orphaned);
+      board.connectorIds = board.connectorIds.filter((id) => !orphanedSet.has(id));
+      orphaned.forEach((id) => { delete board.connectors[id]; });
+    }
     return true;
+  }
+  if (command.type === "connectors.create") return insertConnectors(board, command.connectors, command.insertionIndexes);
+  if (command.type === "connectors.delete") {
+    const deleted = new Set(command.connectorIds.filter((id) => {
+      const connector = board.connectors[id];
+      const expected = command.expectedConnectors?.[id];
+      return Boolean(connector) && (!expected || connectorsEqual(connector!, expected));
+    }));
+    if (!deleted.size) return false;
+    board.connectorIds = board.connectorIds.filter((id) => !deleted.has(id));
+    deleted.forEach((id) => { delete board.connectors[id]; });
+    return true;
+  }
+  if (command.type === "connectors.update") {
+    command.updates.forEach(({ connectorId, patch, expected }) => {
+      const connector = board.connectors[connectorId];
+      if (connector && applyConnectorPatch(connector, patch, expected)) changed = true;
+    });
+    return changed;
   }
   if (command.type === "elements.update") {
     command.updates.forEach(({ elementId, patch, expected }) => {

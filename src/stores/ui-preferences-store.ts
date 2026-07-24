@@ -40,18 +40,25 @@ function persist(preferences: InspectorPreferences) {
   try { localStorage.setItem(INSPECTOR_PREFERENCES_KEY, JSON.stringify(preferences)); } catch { /* UI preferences remain in memory. */ }
 }
 
+export type BoardViewMode = "canvas" | "space";
+
 type UiPreferencesStore = {
   hydrated: boolean;
   inspector: InspectorPreferences;
+  /** 2D whiteboard or the 3D space — two views of the same board document. Session-only. */
+  viewMode: BoardViewMode;
   hydrate: () => void;
   setInspectorMode: (mode: InspectorMode) => void;
   showInspector: () => void;
   recordRecentColor: (color: string) => void;
+  setViewMode: (viewMode: BoardViewMode) => void;
 };
 
 export const useUiPreferencesStore = create<UiPreferencesStore>((set, get) => ({
   hydrated: false,
   inspector: { ...DEFAULT_INSPECTOR_PREFERENCES },
+  viewMode: "canvas",
+  setViewMode: (viewMode) => set({ viewMode }),
   hydrate: () => {
     if (get().hydrated) return;
     let inspector = { ...DEFAULT_INSPECTOR_PREFERENCES };

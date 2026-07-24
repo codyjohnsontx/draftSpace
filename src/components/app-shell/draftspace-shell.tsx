@@ -1,6 +1,7 @@
 "use client";
 
 import { CanvasWorkspace } from "@/components/canvas/canvas-workspace";
+import { SpaceView } from "@/components/space/space-view";
 import { TopBar } from "./top-bar";
 import { useBoardPersistence } from "@/hooks/use-board-persistence";
 import { useEffect, useState } from "react";
@@ -22,6 +23,7 @@ export function DraftspaceShell() {
   const status = usePersistenceStore((state) => state.status); const recovery = usePersistenceStore((state) => state.recovery);
   const board = useBoardStore((state) => state.board);
   const inspectorMode = useUiPreferencesStore((state) => state.inspector.mode);
+  const viewMode = useUiPreferencesStore((state) => state.viewMode);
   const hydrateUiPreferences = useUiPreferencesStore((state) => state.hydrate);
   const [capabilities, setCapabilities] = useState<BrowserCapabilities | null>(null);
   useEffect(() => {
@@ -38,5 +40,5 @@ export function DraftspaceShell() {
   if (status === "recovery-required" && recovery) return <BoardRecoveryScreen recovery={recovery} controller={persistence} />;
   if (capabilities && !capabilities.canvas2d) return <UnsupportedBrowserScreen canDownloadBackup={Boolean(board)} onDownloadBackup={persistence.downloadCurrentBackup} />;
   if (!capabilities) return <div className="loading-canvas"><span /><p>Checking canvas support…</p></div>;
-  return <div className="draftspace-shell" data-inspector-mode={inspectorMode}><CanvasWorkspace /><StyleInspector /><TopBar persistence={persistence} /></div>;
+  return <div className="draftspace-shell" data-inspector-mode={inspectorMode} data-view-mode={viewMode}>{viewMode === "space" ? <SpaceView /> : <CanvasWorkspace />}<StyleInspector /><TopBar persistence={persistence} /></div>;
 }
