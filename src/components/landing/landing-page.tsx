@@ -30,9 +30,10 @@ export function LandingPage() {
     setReady(scene ? "webgl" : "fallback");
 
     return () => {
+      // Restore the app's scroll lock immediately; renderer teardown can be slow on software GL.
+      document.documentElement.classList.remove("landing-scroll");
       orchestrator.dispose();
       scene?.dispose();
-      document.documentElement.classList.remove("landing-scroll");
     };
   }, []);
 
