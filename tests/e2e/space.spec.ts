@@ -2,6 +2,18 @@ import { expect, test, type Page } from "@playwright/test";
 
 const STAMP = "2026-07-24T00:00:00.000Z";
 
+// Firefox on Linux CI reports top-bar buttons as "not stable" while the software WebGL view churns;
+// dispatch the click directly there, matching the 2D style-inspector spec. Real users are unaffected.
+async function pressButton(page: Page, browserName: string, name: string) {
+  const button = page.getByRole("button", { name });
+  await expect(button).toBeVisible();
+  if (browserName === "firefox") {
+    await button.dispatchEvent("click");
+    return;
+  }
+  await button.click();
+}
+
 function shape(id: string, type: string, nodeKind: string, layer: number, label: string, x: number, y: number, width: number, height: number, fill: string) {
   return {
     id, type, nodeKind, layer, label, x, y, width, height,
@@ -98,13 +110,13 @@ const readOrdersX = (page: Page) => page.evaluate(() => new Promise<number>((res
 }));
 
 test.describe("3D space view", () => {
-  test("edits the same board document as the 2D canvas", async ({ page }, testInfo) => {
+  test("edits the same board document as the 2D canvas", async ({ browserName, page }, testInfo) => {
     test.slow();
     const pageErrors: string[] = [];
     page.on("pageerror", (error) => pageErrors.push(error.message));
 
     await seedBoard(page);
-    await page.getByRole("button", { name: "Switch to 3D space" }).click();
+    await pressButton(page, browserName, "Switch to 3D space");
     const space = page.getByRole("main", { name: "Draftspace 3D space" });
     await expect(space).toHaveAttribute("data-space-ready", /webgl|fallback/, { timeout: 15_000 });
     const ready = await space.getAttribute("data-space-ready");
@@ -136,7 +148,7 @@ test.describe("3D space view", () => {
     }
 
     // Back to the whiteboard — same document, same shapes.
-    await page.getByRole("button", { name: "Switch to 2D canvas" }).click();
+    await pressButton(page, browserName, "Switch to 2D canvas");
     await expect(page.getByRole("main", { name: "Draftspace infinite canvas" })).toHaveAttribute("data-element-count", "5");
     expect(pageErrors).toEqual([]);
   });
