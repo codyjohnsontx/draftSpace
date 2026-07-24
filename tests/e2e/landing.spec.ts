@@ -15,7 +15,7 @@ test.describe("landing page", () => {
     });
 
     await page.goto("/landing");
-    await expect(page.getByRole("heading", { level: 1, name: "Think in shapes." })).toBeVisible();
+    await expect(page.getByRole("heading", { level: 1, name: "It starts as a mess." })).toBeVisible();
 
     const root = page.locator(".landing-root");
     await expect(root).toHaveAttribute("data-landing-ready", /webgl|fallback/, { timeout: 15_000 });
@@ -72,7 +72,7 @@ test.describe("landing page", () => {
     await page.emulateMedia({ reducedMotion: "reduce" });
     await page.goto("/landing");
     await expect(page.locator(".landing-root")).toHaveAttribute("data-landing-ready", /webgl|fallback/, { timeout: 15_000 });
-    await expect(page.getByRole("heading", { level: 1, name: "Think in shapes." })).toBeVisible();
+    await expect(page.getByRole("heading", { level: 1, name: "It starts as a mess." })).toBeVisible();
 
     await page.evaluate(() => window.scrollTo(0, document.documentElement.scrollHeight));
     await expect(page.getByRole("link", { name: "Join a room" })).toBeVisible();

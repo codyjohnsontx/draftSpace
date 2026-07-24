@@ -7,7 +7,7 @@ export type CameraKeyframe = {
   lookAt: [number, number, number];
 };
 
-export type CameraRig = { setProgress(progress: number): void };
+export type CameraRig = { setProgress(progress: number, offsetX?: number, offsetY?: number): void };
 
 /**
  * Flies the camera through art-directed keyframes: two CatmullRom curves (one
@@ -32,11 +32,11 @@ export function createCameraRig(camera: THREE.PerspectiveCamera, keyframes: Came
     return (index + THREE.MathUtils.smoothstep(local, 0, 1)) / segmentCount;
   }
 
-  function setProgress(progress: number): void {
+  function setProgress(progress: number, offsetX = 0, offsetY = 0): void {
     const t = toCurveT(progress);
     positionCurve.getPoint(t, position);
     lookAtCurve.getPoint(t, target);
-    camera.position.copy(position);
+    camera.position.set(position.x + offsetX, position.y + offsetY, position.z);
     camera.lookAt(target);
   }
 

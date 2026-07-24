@@ -32,13 +32,19 @@ html.landing-scroll body { height: auto; overflow: visible; }
   min-height: 100svh; display: flex; align-items: center;
   padding: 0 clamp(20px, 7vw, 110px);
 }
+.landing-section--tall { min-height: 150svh; }
 .landing-section[data-align="right"] { justify-content: flex-end; }
 .landing-section--hero { justify-content: center; text-align: center; }
 .landing-section--cta { justify-content: center; text-align: center; }
 
-.landing-copy { max-width: 430px; }
-.landing-copy--hero { max-width: 760px; }
-.landing-copy--cta { max-width: 520px; }
+.landing-copy {
+  max-width: 470px; padding: 52px 64px;
+  /* Soft paper halo keeps copy legible when scene shapes pass behind it.
+     Radii are half the box (50% 50%) so the fade completes inside the box — no clipped hard edge. */
+  background: radial-gradient(50% 50% at 50% 50%, rgba(244, 240, 230, .92) 40%, rgba(244, 240, 230, 0) 96%);
+}
+.landing-copy--hero { max-width: 840px; padding: 72px 104px; }
+.landing-copy--cta { max-width: 640px; padding: 64px 88px; }
 
 .landing-copy h1 {
   margin: 0 0 22px; font-size: clamp(48px, 7.4vw, 96px); line-height: .98;
