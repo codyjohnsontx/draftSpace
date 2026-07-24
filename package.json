@@ -24,12 +24,15 @@
   },
   "dependencies": {
     "@draftspace/collaboration-protocol": "*",
+    "gsap": "^3.15.0",
     "idb": "latest",
     "immer": "latest",
+    "lenis": "^1.3.25",
     "lucide-react": "latest",
     "next": "latest",
     "react": "latest",
     "react-dom": "latest",
+    "three": "^0.185.1",
     "zod": "latest",
     "zustand": "latest"
   },
@@ -43,6 +46,7 @@
     "@types/node": "latest",
     "@types/react": "latest",
     "@types/react-dom": "latest",
+    "@types/three": "^0.185.1",
     "eslint": "latest",
     "eslint-config-next": "latest",
     "fake-indexeddb": "^6.2.5",

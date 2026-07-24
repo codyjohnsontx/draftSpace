@@ -138,7 +138,7 @@ export class CollaborationController {
     const store = useCollaborationStore.getState();
     if (message.type === "hello.ack") {
       store.set({ selfParticipantId: message.participantId, role: message.role === "pending" ? null : message.role, roomRevision: message.roomRevision, status: message.role === "pending" ? "lobby" : "connected" });
-      if (message.role !== "pending" && store.mode === "guest") this.send({ type: "snapshot.request" });
+      if (message.role !== "pending" && store.mode === "guest") { this.clearProposalQueue(); this.send({ type: "snapshot.request" }); }
       return;
     }
     if (message.type === "join.request") { store.set({ pending: { ...store.pending, [message.participant.participantId]: message.participant } }); return; }
