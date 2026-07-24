@@ -14,14 +14,14 @@ html.landing-scroll, html.landing-scroll body { height: auto; overflow-x: hidden
   position: fixed; z-index: 2; top: 0; left: 0; right: 0;
   display: flex; align-items: center; justify-content: space-between;
   padding: 18px clamp(20px, 4vw, 44px);
-  pointer-events: none; /* the bar spans the viewport; only its controls should catch clicks */
 }
-.landing-wordmark { font-weight: 640; font-size: 18px; letter-spacing: -.03em; pointer-events: auto; }
+.landing-wordmark { font-weight: 640; font-size: 18px; letter-spacing: -.03em; }
 .landing-open-link {
-  display: inline-block; pointer-events: auto;
+  /* inline-block + no backdrop-filter: Linux Gecko mis-hit-tests padded inline boxes and backdrop-filter layers */
+  display: inline-block;
   font-size: 14px; font-weight: 560; color: var(--ink); text-decoration: none;
   padding: 8px 15px; border: 1px solid var(--line); border-radius: 10px;
-  background: var(--surface); box-shadow: var(--shadow); backdrop-filter: blur(10px);
+  background: var(--surface); box-shadow: var(--shadow);
 }
 .landing-open-link:hover { background: #fffdfa; }
 

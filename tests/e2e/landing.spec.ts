@@ -54,7 +54,7 @@ test.describe("landing page", () => {
 
     // Client-side navigation (not a full page load) so LandingPage unmount cleanup is what removes the class.
     await page.getByRole("link", { name: "Open the canvas" }).first().click();
-    await page.waitForURL(/\/$/);
+    await page.waitForURL("/");
     await expect
       .poll(async () => page.evaluate(() => document.documentElement.classList.contains("landing-scroll")), { timeout: 15_000 })
       .toBe(false);
