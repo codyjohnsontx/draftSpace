@@ -15,6 +15,8 @@ export const numberEnv = (value: string | undefined, fallback: number) => {
 
 export class Room extends DurableObject<Env> {
   private metadata: RoomMetadata | null = null;
+  /** Guards against close and error both firing cleanup for the same socket. */
+  private handledDisconnects = new WeakSet<WebSocket>();
 
   private async getMetadata() {
     if (!this.metadata) this.metadata = await this.ctx.storage.get<RoomMetadata>("metadata") ?? null;
@@ -70,7 +72,8 @@ export class Room extends DurableObject<Env> {
           otherSocket.serializeAttachment({ ...item, superseded: true });
           otherSocket.close(4001, "Reconnected elsewhere");
         });
-        const next = { ...attachment, participantId: message.profile.id, authenticated: true, role: "host" as const, profile: message.profile };
+        // Server-generated id keeps host identity unique; the client profile is display data only.
+        const next = { ...attachment, participantId: attachment.connectionId, authenticated: true, role: "host" as const, profile: message.profile };
         socket.serializeAttachment(next);
         const returning = metadata.hostDisconnectedAt !== null;
         metadata.hostDisconnectedAt = null;
@@ -143,6 +146,16 @@ export class Room extends DurableObject<Env> {
   }
 
   async webSocketClose(socket: WebSocket) {
+    await this.handleDisconnect(socket);
+  }
+
+  async webSocketError(socket: WebSocket) {
+    await this.handleDisconnect(socket);
+  }
+
+  private async handleDisconnect(socket: WebSocket) {
+    if (this.handledDisconnects.has(socket)) return;
+    this.handledDisconnects.add(socket);
     const attachment = socket.deserializeAttachment() as Attachment;
     if (attachment.superseded) return;
     if (attachment.role === "host") {

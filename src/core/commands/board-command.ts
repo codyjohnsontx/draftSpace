@@ -46,13 +46,13 @@ export const localCommandMetadata = (label: string, intent: BoardCommandIntent):
   intent,
 });
 
-const mutablePatchSchema = z.object({
+const mutablePatchSchema = z.strictObject({
   x: z.number().finite().optional(), y: z.number().finite().optional(), width: z.number().finite().nonnegative().optional(), height: z.number().finite().nonnegative().optional(),
   rotation: z.number().finite().optional(), groupIds: z.array(z.string()).optional(), locked: z.boolean().optional(), hidden: z.boolean().optional(),
   opacity: z.number().min(0).max(1).optional(), strokeColor: z.string().min(1).max(64).optional(), strokeWidth: z.number().positive().finite().optional(),
   strokeStyle: z.enum(["solid", "dashed", "dotted"]).optional(), fillColor: z.string().min(1).max(64).nullable().optional(), fillStyle: z.enum(["solid", "hachure"]).optional(),
   roughness: z.number().min(0).max(2).optional(), boundTextId: z.string().nullable().optional(), cornerRadius: z.number().finite().nonnegative().optional(),
-}).strict();
+});
 
 const boardPreferencesPatchSchema = z.object({
   backgroundPattern: z.enum(["dots", "grid", "none"]).optional(),

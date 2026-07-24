@@ -285,6 +285,7 @@ export function buildLandingWorld(): LandingWorld {
   const matrix = new THREE.Matrix4();
   const quaternion = new THREE.Quaternion();
   const scaleVector = new THREE.Vector3();
+  const positionVector = new THREE.Vector3();
 
   function update(elapsedSeconds: number, sceneProgress: number): void {
     const pathProgress = pathProgressFor(sceneProgress);
@@ -316,7 +317,8 @@ export function buildLandingWorld(): LandingWorld {
       const overshoot = Math.sin(Math.min(appear, 1) * Math.PI) * 0.35;
       const y = -0.85 + appear * 1.1 + overshoot + idle;
       scaleVector.setScalar(Math.max(appear, 0.0001));
-      matrix.compose(new THREE.Vector3(origin.x, y, origin.z), quaternion, scaleVector);
+      positionVector.set(origin.x, y, origin.z);
+      matrix.compose(positionVector, quaternion, scaleVector);
       tiles.setMatrixAt(i, matrix);
     }
     tiles.instanceMatrix.needsUpdate = true;

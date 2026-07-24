@@ -5,7 +5,7 @@ import type { LineMaterial } from "three/addons/lines/LineMaterial.js";
 import type { CanvasElement, RectangleElement } from "@/core/elements/types";
 import { createShapeMesh, SHAPE_MESH_DEFAULTS } from "@/features/scene3d/shape-mesh";
 
-function element(overrides: Partial<RectangleElement> & { type?: CanvasElement["type"] } = {}): CanvasElement {
+function element(overrides: Omit<Partial<RectangleElement>, "type"> & { type?: CanvasElement["type"] } = {}): CanvasElement {
   return {
     id: "test-shape",
     type: "rectangle",

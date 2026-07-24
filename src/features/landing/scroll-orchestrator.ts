@@ -57,6 +57,7 @@ export function createScrollOrchestrator(options: {
     dispose() {
       context.revert();
       gsap.ticker.remove(tick);
+      gsap.ticker.lagSmoothing(500, 33); // GSAP defaults — lagSmoothing(0) above is only wanted while Lenis drives the ticker
       lenis.destroy();
     },
   };
