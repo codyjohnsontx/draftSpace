@@ -47,9 +47,14 @@ export function createDiagramLabel(text: string, color: string = INK): DiagramLa
   const mesh = new THREE.Mesh(buildGeometry(canvas), material);
   mesh.visible = false;
 
-  // Redraw once webfonts land so the mono face replaces the fallback.
+  // Redraw once webfonts land so the mono face replaces the fallback. If the
+  // scene was disposed first (StrictMode remount, fast navigation), bail out —
+  // otherwise the rebuilt geometry outlives the traversal that frees it.
+  let disposed = false;
+  material.addEventListener("dispose", () => { disposed = true; });
   document.fonts?.ready
     .then(() => {
+      if (disposed) return;
       draw();
       texture.needsUpdate = true;
       mesh.geometry.dispose();

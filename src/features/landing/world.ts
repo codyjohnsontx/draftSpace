@@ -143,7 +143,9 @@ type Track = {
   buildDelay: number;
   fillMaterial: THREE.MeshStandardMaterial | null;
   baseEmissive: THREE.Color | null;
+  /** Route parameter where each route passes this station; routes differ in length. */
   hopU: number | null;
+  hopUB: number | null;
 };
 
 type Route = {
@@ -277,6 +279,7 @@ export function buildLandingWorld(): LandingWorld {
       fillMaterial,
       baseEmissive: null,
       hopU: null,
+      hopUB: null,
     });
   });
 
@@ -293,20 +296,29 @@ export function buildLandingWorld(): LandingWorld {
   head.setVisible(false);
   group.add(head.group);
 
-  // Node pulse anchors: route parameter where the request passes each station.
+  // Node pulse anchors: the route parameter where the request passes each
+  // station. Solved per route — routeB is longer and the monolith halves have
+  // moved by then — so pulses stay in step with the head after the reroute.
   const pulseSample = new THREE.Vector3();
   const anchor = new THREE.Vector3();
-  for (const track of tracks) {
-    if (!["client", "gateway", "monoA", "monoB", "cache", "db", "entry"].includes(track.spec.role)) continue;
-    anchor.set(track.spec.diagram.x, 0.45, track.spec.diagram.z);
+  function nearestU(route: Route, target: THREE.Vector3): number | null {
     let bestU = 0;
     let bestDistance = Infinity;
     for (let s = 0; s <= 160; s += 1) {
-      routeA.pointAt(s / 160, pulseSample);
-      const distance = pulseSample.distanceTo(anchor);
+      route.pointAt(s / 160, pulseSample);
+      const distance = pulseSample.distanceTo(target);
       if (distance < bestDistance) { bestDistance = distance; bestU = s / 160; }
     }
-    track.hopU = bestDistance < 4 ? bestU : null;
+    return bestDistance < 4 ? bestU : null;
+  }
+  for (const track of tracks) {
+    if (!["client", "gateway", "monoA", "monoB", "cache", "db", "entry"].includes(track.spec.role)) continue;
+    anchor.set(track.spec.diagram.x, 0.45, track.spec.diagram.z);
+    track.hopU = nearestU(routeA, anchor);
+    // After the split the halves sit at ±2.9 rather than their assembled z.
+    if (track.spec.role === "monoA") anchor.z = -2.9;
+    if (track.spec.role === "monoB") anchor.z = 2.9;
+    track.hopUB = nearestU(routeB, anchor);
   }
 
   // ---- Diagram labels — the annotations architects pencil next to shapes ----
@@ -536,13 +548,16 @@ export function buildLandingWorld(): LandingWorld {
     head.setVisible(headVisible);
     head.update(elapsedSeconds);
 
-    // Node pulses as the request passes each station.
-    const activeU = trace > 0 && trace < 1 ? trace : sceneProgress >= 0.955 ? (elapsedSeconds * 0.07) % 1 : null;
+    // Node pulses as the request passes each station, keyed to whichever route
+    // the head is currently travelling (routeA while tracing, routeB ambient).
+    const ambient = sceneProgress >= 0.955;
+    const activeU = trace > 0 && trace < 1 ? trace : ambient ? (elapsedSeconds * 0.07) % 1 : null;
     for (const track of tracks) {
       if (!track.fillMaterial || track.spec.role === "ensemble") continue;
       let intensity = 0;
-      if (activeU !== null && track.hopU !== null) {
-        const distance = Math.abs(activeU - track.hopU);
+      const hop = ambient ? track.hopUB : track.hopU;
+      if (activeU !== null && hop !== null) {
+        const distance = Math.abs(activeU - hop);
         intensity = Math.max(0, 1 - distance * 14) * 0.55;
       }
       track.fillMaterial.emissiveIntensity = intensity;
