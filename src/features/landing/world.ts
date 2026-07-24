@@ -2,6 +2,7 @@ import * as THREE from "three";
 import type { CanvasElement, ShapeType } from "@/core/elements/types";
 import { createShapeMesh } from "@/features/scene3d/shape-mesh";
 import { createCometHead, createGlowSegment, type GlowSegment } from "./glow-path";
+import { createDiagramLabel } from "./labels";
 
 export const WORLD_COLORS = {
   background: 0xf4f0e6,
@@ -308,6 +309,35 @@ export function buildLandingWorld(): LandingWorld {
     track.hopU = bestDistance < 4 ? bestU : null;
   }
 
+  // ---- Diagram labels — the annotations architects pencil next to shapes ----
+  // Standard flowchart/system-design vocabulary: terminator ellipse for the
+  // actors, rectangles for services, diamond for the decision, cylinder for
+  // the database, plus gateway / cache / queue naming.
+  const staticLabelSpecs: { text: string; x: number; z: number; color?: string }[] = [
+    { text: "USERS", x: -23, z: 2.5 },
+    { text: "WEB", x: -16, z: -2.9 },
+    { text: "IOS", x: -16, z: 2.1 },
+    { text: "ANDROID", x: -16, z: 7.1 },
+    { text: "API GATEWAY", x: -8, z: 3.3 },
+    { text: "AUTH?", x: -8, z: 9.1, color: "#b85f3f" },
+    { text: "CACHE", x: 8, z: 6.6 },
+    { text: "DATABASE", x: 8, z: -1.4 },
+    { text: "QUEUE", x: 15, z: 0.8 },
+  ];
+  const staticLabels = staticLabelSpecs.map((spec) => {
+    const label = createDiagramLabel(spec.text, spec.color);
+    label.mesh.position.set(spec.x, 0.035, spec.z);
+    group.add(label.mesh);
+    return label;
+  });
+  const monolithLabel = createDiagramLabel("MONOLITH");
+  monolithLabel.mesh.position.set(0, 0.035, 4.35);
+  const ordersLabel = createDiagramLabel("ORDERS");
+  ordersLabel.mesh.position.set(-4.5, 0.035, -2.9);
+  const billingLabel = createDiagramLabel("BILLING");
+  billingLabel.mesh.position.set(0, 0.035, 5.45);
+  [monolithLabel, ordersLabel, billingLabel].forEach((label) => group.add(label.mesh));
+
   // ---- Snap dust rings ----------------------------------------------------
   const castCount = tracks.length;
   const ringGeometry = new THREE.RingGeometry(0.85, 1.05, 26);
@@ -454,6 +484,16 @@ export function buildLandingWorld(): LandingWorld {
       rings.setMatrixAt(i, matrix);
     }
     rings.instanceMatrix.needsUpdate = true;
+
+    // ---- Labels fade in as the diagram assembles; the split renames the halves ----
+    staticLabels.forEach((label, index) => {
+      label.setOpacity(smooth(THREE.MathUtils.clamp((sceneProgress - 0.625 - index * 0.008) / 0.05, 0, 1)) * 0.85);
+    });
+    monolithLabel.setOpacity(
+      smooth(THREE.MathUtils.clamp((sceneProgress - 0.625) / 0.05, 0, 1)) * (1 - smooth(window01(sceneProgress, [0.845, 0.875]))) * 0.85,
+    );
+    ordersLabel.setOpacity(rewire * 0.85);
+    billingLabel.setOpacity(rewire * 0.85);
 
     // ---- Thread: trace the request, then re-route it live ----
     drawRoute(routeA, trace);
