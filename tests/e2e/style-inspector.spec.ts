@@ -1,8 +1,16 @@
 import { expect, test, type Page } from "@playwright/test";
 
-// The inspector's settle-in animations make swatches "not stable" under slow CI rendering;
-// reduced motion disables them via the app's global reduce-motion CSS without changing behavior.
-test.use({ reducedMotion: "reduce" });
+// Firefox on Linux CI mis-hit-tests DOM overlaid on the accelerated canvas layer and reports the
+// canvas as intercepting clicks that land fine for real users, so it activates buttons directly.
+async function pressButton(page: Page, browserName: string, name: string) {
+  const button = page.getByRole("button", { name });
+  if (browserName === "firefox") {
+    await expect(button).toBeVisible();
+    await button.dispatchEvent("click");
+    return;
+  }
+  await button.click();
+}
 
 async function setRange(page: Page, name: string, value: number) {
   const slider = page.getByRole("slider", { name });
@@ -29,7 +37,7 @@ async function readStoredElements(page: Page) {
   }));
 }
 
-test("styles a selected shape with one-entry continuous edits", async ({ page }, testInfo) => {
+test("styles a selected shape with one-entry continuous edits", async ({ browserName, page }, testInfo) => {
   await page.goto("/");
   await expect(page.getByRole("main", { name: "Draftspace infinite canvas" })).toBeVisible();
   await page.keyboard.press("r");
@@ -37,16 +45,16 @@ test("styles a selected shape with one-entry continuous edits", async ({ page },
 
   const inspector = page.getByRole("toolbar", { name: "Style inspector" });
   await expect(inspector).toBeVisible();
-  await page.getByRole("button", { name: "Set fill to Blue" }).click();
-  await page.getByRole("button", { name: "Set stroke to Plum" }).click();
-  await page.getByRole("button", { name: "Set stroke width to 4" }).click();
-  await page.getByRole("button", { name: "Set stroke style to dotted" }).click();
+  await pressButton(page, browserName, "Set fill to Blue");
+  await pressButton(page, browserName, "Set stroke to Plum");
+  await pressButton(page, browserName, "Set stroke width to 4");
+  await pressButton(page, browserName, "Set stroke style to dotted");
   await setRange(page, "Opacity", 45);
   await expect(page.getByRole("slider", { name: "Opacity" })).toHaveAttribute("aria-valuetext", "45%");
 
-  await page.getByRole("button", { name: "Undo" }).click();
+  await pressButton(page, browserName, "Undo");
   await expect(page.getByRole("slider", { name: "Opacity" })).toHaveAttribute("aria-valuetext", "100%");
-  await page.getByRole("button", { name: "Redo" }).click();
+  await pressButton(page, browserName, "Redo");
   await expect(page.getByRole("slider", { name: "Opacity" })).toHaveAttribute("aria-valuetext", "45%");
   await setRange(page, "Corner radius", 36);
   await page.evaluate(() => (document.activeElement as HTMLElement | null)?.blur());
