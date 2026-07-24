@@ -465,9 +465,18 @@ export function buildLandingWorld(): LandingWorld {
       const squash = snapT > 0 && snapT < 1 ? 1 - 0.14 * Math.sin(Math.PI * snapT) : 1;
       const breath = buildT >= 1 && spec.role !== "ensemble" ? 1 + 0.008 * Math.sin(elapsedSeconds * 1.4 + i) : 1;
 
+      // The finale is the finished blueprint: the tidied leftovers clear away entirely.
+      let clear = 0;
+      if (spec.role === "ensemble") {
+        clear = smooth(THREE.MathUtils.clamp((window01(sceneProgress, [0.925, 0.985]) - seeded(i, 40) * 0.35) / 0.65, 0, 1));
+        y -= clear * 0.3;
+      }
+      const presence = 1 - clear;
+
       track.holder.position.set(x, y, z);
       track.holder.rotation.set(tiltX, spin, tiltZ);
-      track.holder.scale.set(breath, squash * breath, breath);
+      track.holder.scale.set(breath * presence, squash * breath * presence, breath * presence);
+      track.holder.visible = presence > 0.001;
 
       // Queue chips do a little consumer hop after the rewire lands.
       if (spec.role === "queue" && rewire >= 1) {

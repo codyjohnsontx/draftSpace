@@ -22,7 +22,7 @@ const CAMERA_KEYFRAMES: CameraKeyframe[] = [
   { at: 0.7, position: [6, 15, 23], lookAt: [1, 0, 0] },
   { at: 0.786, position: [11, 11, 17], lookAt: [1, 0.4, 1] },
   { at: 0.92, position: [6, 14, 21], lookAt: [0, 0, 0] },
-  { at: 1.0, position: [0, 31, 39], lookAt: [0, 0, -1] },
+  { at: 1.0, position: [-3, 31, 40], lookAt: [-3, 0, -0.5] },
 ];
 
 export type LandingScene = {
