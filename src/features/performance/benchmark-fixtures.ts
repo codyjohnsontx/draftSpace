@@ -31,7 +31,8 @@ export function createBenchmarkBoard(options: BenchmarkFixtureOptions): BoardDoc
     const column = index % columns; const row = Math.floor(index / columns);
     elementIds.push(id);
     elements[id] = {
-      id, type: "rectangle", x: ALL_VISIBLE_PADDING + column * cellWidth, y: ALL_VISIBLE_PADDING + row * cellHeight,
+      id, type: "rectangle", nodeKind: "plain", layer: 0, label: "",
+      x: ALL_VISIBLE_PADDING + column * cellWidth, y: ALL_VISIBLE_PADDING + row * cellHeight,
       width: elementWidth, height: elementHeight, rotation: 0, groupIds: [], locked: false, hidden: false,
       opacity: 1, strokeColor: "#292724", strokeWidth: 1, strokeStyle: "solid", fillColor: "#f0ded4",
       fillStyle: "solid", roughness: 0, cornerRadius: options.layout === "all-visible" ? 3 : 10,
@@ -39,8 +40,9 @@ export function createBenchmarkBoard(options: BenchmarkFixtureOptions): BoardDoc
     };
   }
   return {
-    fileFormat: "draftspace/board", schemaVersion: 2, id: benchmarkBoardId(options), name: `Benchmark ${options.elementCount} ${options.layout}`,
+    fileFormat: "draftspace/board", schemaVersion: 3, id: benchmarkBoardId(options), name: `Benchmark ${options.elementCount} ${options.layout}`,
     createdAt: TIMESTAMP, updatedAt: TIMESTAMP, viewport: { x: 0, y: 0, zoom: 1 },
     preferences: { backgroundPattern: "none", gridSize: 20, snapToGrid: false, restoreViewport: true }, elementIds, elements,
+    connectorIds: [], connectors: {},
   };
 }

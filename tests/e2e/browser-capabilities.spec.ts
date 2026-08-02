@@ -62,7 +62,7 @@ test.describe("Chromium capability fallbacks", () => {
     await page.addInitScript(() => {
       const put = IDBObjectStore.prototype.put;
       IDBObjectStore.prototype.put = function (value: unknown, key?: IDBValidKey) {
-        if (value && typeof value === "object" && "schemaVersion" in value && value.schemaVersion === 2) throw new DOMException("Migration write blocked", "QuotaExceededError");
+        if (value && typeof value === "object" && "schemaVersion" in value && value.schemaVersion === 3) throw new DOMException("Migration write blocked", "QuotaExceededError");
         return key === undefined ? put.call(this, value) : put.call(this, value, key);
       };
     });

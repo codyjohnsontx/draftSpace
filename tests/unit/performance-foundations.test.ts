@@ -9,7 +9,8 @@ import { createShape } from "@/core/board/factory";
 import type { RectangleElement } from "@/core/elements/types";
 
 const rectangle = (id: string, overrides: Partial<RectangleElement> = {}): RectangleElement => ({
-  id, type: "rectangle", x: 0, y: 0, width: 100, height: 80, rotation: 0, groupIds: [], locked: false,
+  id, type: "rectangle", nodeKind: "plain", layer: 0, label: "",
+  x: 0, y: 0, width: 100, height: 80, rotation: 0, groupIds: [], locked: false,
   hidden: false, opacity: 1, strokeColor: "#000", strokeWidth: 1, strokeStyle: "solid", fillColor: "#fff",
   fillStyle: "solid", roughness: 0, cornerRadius: 0, boundTextId: null,
   createdAt: "2026-01-01T00:00:00.000Z", updatedAt: "2026-01-01T00:00:00.000Z", ...overrides,

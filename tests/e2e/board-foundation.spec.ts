@@ -132,7 +132,7 @@ test("migrates a version one rectangle board in place", async ({ page }) => {
       const database = request.result; const get = database.transaction("boards").objectStore("boards").get(id!);
       get.onsuccess = () => { database.close(); resolve(get.result.schemaVersion); }; get.onerror = () => { database.close(); reject(get.error); };
     };
-  }))).toBe(2);
+  }))).toBe(3);
 });
 
 test("cancels drawing without changing history", async ({ page }) => {

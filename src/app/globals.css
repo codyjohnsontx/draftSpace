@@ -281,3 +281,9 @@ kbd { display: inline-grid; min-width: 21px; height: 21px; place-items: center; 
   .collaboration-backdrop { padding: 64px 8px 8px; }.share-room-dialog { width: 100%; max-height: calc(100svh - 72px); }.invite-code-block { grid-template-columns: 1fr; }.invite-code-block > button { grid-column: 1; grid-row: 3; width: max-content; margin-top: 8px; }.join-room-panel { padding: 22px; }.join-room-panel footer { flex-direction: column; align-items: center; gap: 6px; }
 }
 @media (prefers-reduced-motion: reduce) { *, *::before, *::after { scroll-behavior: auto !important; animation-duration: .01ms !important; animation-iteration-count: 1 !important; transition-duration: .01ms !important; } }
+
+/* 3D space view — the same board as a tiered system diagram. */
+.space-view { display: block; }
+.space-canvas { position: absolute; inset: 0; width: 100%; height: 100%; display: block; touch-action: none; cursor: default; }
+.space-hint { position: absolute; left: 50%; bottom: 16px; transform: translateX(-50%); z-index: 4; margin: 0; padding: 7px 14px; border-radius: 999px; background: var(--surface); border: 1px solid var(--line); box-shadow: var(--shadow); font-size: 11.5px; color: var(--muted); pointer-events: none; white-space: nowrap; max-width: calc(100vw - 24px); overflow: hidden; text-overflow: ellipsis; }
+.space-fallback { position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%); margin: 0; color: var(--muted); font-size: 14px; }

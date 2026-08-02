@@ -25,5 +25,5 @@ describe("board schema", () => {
     expect(result.success).toBe(false);
     if (!result.success) expect(result.error.issues).toContainEqual(expect.objectContaining({ message: "Missing element toString" }));
   });
-  it("rejects unsupported versions", () => expect(boardSchema.safeParse({ ...createBoard(), schemaVersion: 3 }).success).toBe(false));
+  it("rejects unsupported versions", () => expect(boardSchema.safeParse({ ...createBoard(), schemaVersion: 4 }).success).toBe(false));
 });

@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { Download, HelpCircle, Menu, Radio, Redo2, SlidersHorizontal, Undo2, UserRoundPlus } from "lucide-react";
+import { Boxes, Download, HelpCircle, Menu, PencilRuler, Radio, Redo2, SlidersHorizontal, Undo2, UserRoundPlus } from "lucide-react";
 import { useBoardStore } from "@/stores/board-store";
 import { PersistenceStatus } from "./persistence-status";
 import type { PersistenceController } from "@/hooks/use-board-persistence";
@@ -17,6 +17,7 @@ export function TopBar({ persistence }: { persistence?: PersistenceController })
   const board = useBoardStore((s) => s.board);
   const history = useBoardStore((s) => s.history); const rename = useBoardStore((s) => s.rename);
   const inspectorMode = useUiPreferencesStore((state) => state.inspector.mode);
+  const viewMode = useUiPreferencesStore((state) => state.viewMode);
   const [inspectorMenuOpen, setInspectorMenuOpen] = useState(false);
   const [shareOpen, setShareOpen] = useState(false); const collaborationMode = useCollaborationStore((state) => state.mode); const collaborationStatus = useCollaborationStore((state) => state.status); const collaborationRole = useCollaborationStore((state) => state.role); const collaborationSelf = useCollaborationStore((state) => state.self); const participantCount = useCollaborationStore((state) => Object.keys(state.participants).length + 1); const pendingCount = useCollaborationStore((state) => Object.keys(state.pending).length);
   const guestReadOnly = collaborationMode === "guest" && (collaborationStatus !== "connected" || collaborationRole !== "editor");
@@ -39,6 +40,7 @@ export function TopBar({ persistence }: { persistence?: PersistenceController })
     <input key={board.name} className="board-name" aria-label="Board name" defaultValue={board.name} disabled={guestReadOnly} onBlur={(e) => rename(e.currentTarget.value)} onKeyDown={(e) => { if (e.key === "Enter") e.currentTarget.blur(); }} />
     <div className="top-actions">
       {persistence ? <PersistenceStatus controller={persistence} /> : <LiveRoomStatus />}
+      <Tooltip side="bottom" label={viewMode === "canvas" ? "3D space" : "2D canvas"} description={viewMode === "canvas" ? "View this board as a tiered 3D system diagram" : "Back to the flat whiteboard"}>{(tooltipId) => <button type="button" className={`icon-button ${viewMode === "space" ? "live" : ""}`} aria-label={viewMode === "canvas" ? "Switch to 3D space" : "Switch to 2D canvas"} aria-describedby={tooltipId} onClick={() => useUiPreferencesStore.getState().setViewMode(viewMode === "canvas" ? "space" : "canvas")}>{viewMode === "canvas" ? <Boxes size={17} /> : <PencilRuler size={17} />}</button>}</Tooltip>
       {persistence && collaborationEnabled && <Tooltip side="bottom" label={collaborationMode === "host" ? "Live room" : "Share"} description={pendingCount ? `${pendingCount} join request${pendingCount === 1 ? "" : "s"} waiting` : collaborationMode === "host" ? `${participantCount} people connected` : "Invite people into this board"}>{(tooltipId) => <button ref={shareButtonRef} type="button" className={`icon-button share-button ${collaborationMode === "host" && collaborationStatus === "connected" ? "live" : ""} ${pendingCount ? "pending" : ""}`} aria-label="Share board" aria-describedby={tooltipId} onClick={() => setShareOpen(true)}>{collaborationMode === "host" ? <Radio size={17} /> : <UserRoundPlus size={17} />}{collaborationMode === "host" && <b>{pendingCount || participantCount}</b>}</button>}</Tooltip>}
       <span className="divider" />
       <div className="inspector-menu-wrap" ref={inspectorMenuRef} onKeyDown={(event) => {
