@@ -12,6 +12,7 @@ import { useUiPreferencesStore } from "@/stores/ui-preferences-store";
 import { ShareRoomDialog } from "@/components/collaboration/share-room-dialog";
 import { LiveRoomStatus } from "@/components/collaboration/live-room-status";
 import { useCollaborationStore } from "@/stores/collaboration-store";
+import { useCanEditBoard } from "@/hooks/use-can-edit-board";
 import { collaborationEnabled } from "@/features/collaboration/collaboration-enabled";
 
 export function TopBar({ persistence }: { persistence?: PersistenceController }) {
@@ -20,8 +21,8 @@ export function TopBar({ persistence }: { persistence?: PersistenceController })
   const inspectorMode = useUiPreferencesStore((state) => state.inspector.mode);
   const viewMode = useUiPreferencesStore((state) => state.viewMode);
   const [inspectorMenuOpen, setInspectorMenuOpen] = useState(false);
-  const [shareOpen, setShareOpen] = useState(false); const collaborationMode = useCollaborationStore((state) => state.mode); const collaborationStatus = useCollaborationStore((state) => state.status); const collaborationRole = useCollaborationStore((state) => state.role); const collaborationSelf = useCollaborationStore((state) => state.self); const participantCount = useCollaborationStore((state) => Object.keys(state.participants).length + 1); const pendingCount = useCollaborationStore((state) => Object.keys(state.pending).length);
-  const guestReadOnly = collaborationMode === "guest" && (collaborationStatus !== "connected" || collaborationRole !== "editor");
+  const [shareOpen, setShareOpen] = useState(false); const collaborationMode = useCollaborationStore((state) => state.mode); const collaborationStatus = useCollaborationStore((state) => state.status); const collaborationSelf = useCollaborationStore((state) => state.self); const participantCount = useCollaborationStore((state) => Object.keys(state.participants).length + 1); const pendingCount = useCollaborationStore((state) => Object.keys(state.pending).length);
+  const readOnly = !useCanEditBoard();
   const hostingLiveRoom = collaborationMode === "host" && !["ended", "error"].includes(collaborationStatus);
   const actorId = collaborationSelf?.id ?? "local";
   const canUndo = history.undo.some((entry) => entry.metadata?.actorId === actorId);
@@ -40,11 +41,12 @@ export function TopBar({ persistence }: { persistence?: PersistenceController })
     <div className="brand-lockup"><span className="brand-mark" aria-hidden="true"><i /><i /></span><strong>Draftspace</strong></div>
     <Tooltip className="mobile-only" side="bottom" align="start" label="Board menu" description="Board options — coming soon">{(tooltipId) => <button type="button" className="icon-button" aria-label="Board menu" aria-describedby={tooltipId}><Menu size={18} /></button>}</Tooltip>
     <div className="board-identity">
-      <input key={board.name} className="board-name" aria-label="Board name" defaultValue={board.name} disabled={guestReadOnly} onBlur={(e) => rename(e.currentTarget.value)} onKeyDown={(e) => { if (e.key === "Enter") e.currentTarget.blur(); }} />
+      <input key={board.name} className="board-name" aria-label="Board name" defaultValue={board.name} disabled={readOnly} onBlur={(e) => rename(e.currentTarget.value)} onKeyDown={(e) => { if (e.key === "Enter") e.currentTarget.blur(); }} />
       {/* A guest is in someone else's room, so the local board list is not theirs to switch. A
           host's room is served from the board that is open, so swapping it under a room that is
           still live server-side, including one the host is reconnecting to, would leave every
-          guest on a board the host is no longer editing. */}
+          guest on a board the host is no longer editing. Switching stays open to a read-only tab:
+          it mutates nothing, and picking another board is how such a tab gets back to editing. */}
       {persistence && collaborationMode !== "guest" && !hostingLiveRoom && <BoardSwitcher controller={persistence} />}
     </div>
     <div className="top-actions">
@@ -67,8 +69,8 @@ export function TopBar({ persistence }: { persistence?: PersistenceController })
           <InspectorModeControls presentation="menu" mode={inspectorMode} onSelect={(mode) => { useUiPreferencesStore.getState().setInspectorMode(mode); setInspectorMenuOpen(false); }} />
         </div>}
       </div>
-      <Tooltip side="bottom" label="Undo" description="Reverse the last board change" shortcut="⌘/Ctrl Z">{(tooltipId) => <button type="button" className="icon-button" onClick={() => useBoardStore.getState().undo(actorId)} disabled={!canUndo || guestReadOnly} aria-label="Undo" aria-describedby={tooltipId}><Undo2 size={17} /></button>}</Tooltip>
-      <Tooltip side="bottom" label="Redo" description="Restore the last undone change" shortcut="⌘/Ctrl ⇧ Z">{(tooltipId) => <button type="button" className="icon-button" onClick={() => useBoardStore.getState().redo(actorId)} disabled={!canRedo || guestReadOnly} aria-label="Redo" aria-describedby={tooltipId}><Redo2 size={17} /></button>}</Tooltip>
+      <Tooltip side="bottom" label="Undo" description="Reverse the last board change" shortcut="⌘/Ctrl Z">{(tooltipId) => <button type="button" className="icon-button" onClick={() => useBoardStore.getState().undo(actorId)} disabled={!canUndo || readOnly} aria-label="Undo" aria-describedby={tooltipId}><Undo2 size={17} /></button>}</Tooltip>
+      <Tooltip side="bottom" label="Redo" description="Restore the last undone change" shortcut="⌘/Ctrl ⇧ Z">{(tooltipId) => <button type="button" className="icon-button" onClick={() => useBoardStore.getState().redo(actorId)} disabled={!canRedo || readOnly} aria-label="Redo" aria-describedby={tooltipId}><Redo2 size={17} /></button>}</Tooltip>
       <span className="divider" />
       <Tooltip className="desktop-secondary" side="bottom" label="Export" description="Download options arrive in Phase 4">{(tooltipId) => <button type="button" className="icon-button" aria-label="Export" aria-describedby={tooltipId}><Download size={17} /></button>}</Tooltip>
       <Tooltip className="desktop-secondary" side="bottom" align="end" label="Keyboard shortcuts" description="Shortcut reference — coming soon">{(tooltipId) => <button type="button" className="icon-button" aria-label="Help and keyboard shortcuts" aria-describedby={tooltipId}><HelpCircle size={17} /></button>}</Tooltip>

@@ -9,7 +9,7 @@ import { applyConnectorPreview, applyStylePreview, sharedValue, visibleRecentCol
 import { useBoardStore } from "@/stores/board-store";
 import { useSessionStore } from "@/stores/session-store";
 import { useUiPreferencesStore, type InspectorMode } from "@/stores/ui-preferences-store";
-import { useCollaborationStore } from "@/stores/collaboration-store";
+import { useCanEditBoard } from "@/hooks/use-can-edit-board";
 
 const capitalize = (value: string) => `${value.charAt(0).toUpperCase()}${value.slice(1)}`;
 
@@ -33,8 +33,7 @@ export function StyleInspector() {
   const connectorPreview = useSessionStore((state) => state.connectorStylePreview);
   const hydrated = useUiPreferencesStore((state) => state.hydrated);
   const preferences = useUiPreferencesStore((state) => state.inspector);
-  const collaborationMode = useCollaborationStore((state) => state.mode); const collaborationStatus = useCollaborationStore((state) => state.status); const collaborationRole = useCollaborationStore((state) => state.role);
-  const readOnly = collaborationMode === "guest" && (collaborationStatus !== "connected" || collaborationRole !== "editor");
+  const readOnly = !useCanEditBoard();
   const selected = useMemo(() => board ? selectedIds.map((id) => board.elements[id]).filter((element): element is CanvasElement => Boolean(element)) : [], [board, selectedIds]);
   // The selection holds elements or edges, never both, so the inspector shows one set of controls or the other.
   const selectedConnectors = useMemo(() => board ? selectedConnectorIds.map((id) => board.connectors[id]).filter((connector): connector is Connector => Boolean(connector)) : [], [board, selectedConnectorIds]);

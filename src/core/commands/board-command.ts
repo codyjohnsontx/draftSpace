@@ -40,10 +40,14 @@ export type BoardCommandMetadata = {
 
 let localActorId = () => "local";
 let localCommandsAllowed = () => true;
+let boardOwnedByThisTab = () => true;
 export const setLocalActorIdProvider = (provider: () => string) => { localActorId = provider; };
 export const getLocalActorId = () => localActorId();
+/** Set by the live-room controller: an admitted viewer may not mutate the host's board. */
 export const setLocalCommandAuthorizationProvider = (provider: () => boolean) => { localCommandsAllowed = provider; };
-export const canDispatchLocalCommands = () => localCommandsAllowed();
+/** Set by the persistence layer: a tab that does not hold the board's lease may not mutate it. */
+export const setBoardOwnershipProvider = (provider: () => boolean) => { boardOwnedByThisTab = provider; };
+export const canDispatchLocalCommands = () => localCommandsAllowed() && boardOwnedByThisTab();
 
 export const localCommandMetadata = (label: string, intent: BoardCommandIntent): BoardCommandMetadata => ({
   commandId: newId(),

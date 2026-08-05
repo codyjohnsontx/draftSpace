@@ -4,6 +4,13 @@ import type { PersistenceError } from "@/features/persistence/persistence-errors
 
 export type PersistenceStatus = "loading" | "saving" | "saved" | "failed" | "session-only" | "recovery-required";
 
+/**
+ * Whether this tab holds the board's lease. Only the owner edits and saves; every other
+ * tab on the same board views it. Kept apart from `status` because a tab's right to edit
+ * and its save state are independent facts.
+ */
+export type BoardAccess = "owner" | "read-only";
+
 export type RecoveryPayload = {
   boardId: string;
   raw: unknown;
@@ -15,6 +22,7 @@ export type RecoveryPayload = {
 
 type PersistenceStore = {
   status: PersistenceStatus;
+  boardAccess: BoardAccess;
   error: PersistenceError | null;
   recovery: RecoveryPayload | null;
   /**
@@ -26,6 +34,7 @@ type PersistenceStore = {
   savedRevision: number;
   attemptedRevision: number | null;
   networkOnline: boolean;
+  setBoardAccess: (boardAccess: BoardAccess) => void;
   markLoading: () => void;
   markSaving: (revision: number) => void;
   markSaved: (revision: number, savedAt: string) => void;
@@ -39,8 +48,9 @@ type PersistenceStore = {
 };
 
 export const usePersistenceStore = create<PersistenceStore>((set) => ({
-  status: "loading", error: null, recovery: null, boards: [], lastSavedAt: null, savedRevision: 0, attemptedRevision: null,
+  status: "loading", boardAccess: "owner", error: null, recovery: null, boards: [], lastSavedAt: null, savedRevision: 0, attemptedRevision: null,
   networkOnline: typeof navigator === "undefined" ? true : navigator.onLine,
+  setBoardAccess: (boardAccess) => set({ boardAccess }),
   markLoading: () => set({ status: "loading", error: null, recovery: null }),
   markSaving: (attemptedRevision) => set({ status: "saving", attemptedRevision, error: null }),
   markSaved: (savedRevision, lastSavedAt) => set({ status: "saved", savedRevision, lastSavedAt, attemptedRevision: null, error: null }),

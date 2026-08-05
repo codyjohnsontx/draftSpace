@@ -4,16 +4,10 @@ import { useEffect, useRef, useState } from "react";
 import * as THREE from "three";
 import { useBoardStore } from "@/stores/board-store";
 import { useSessionStore } from "@/stores/session-store";
-import { useCollaborationStore } from "@/stores/collaboration-store";
 import { snapValue } from "@/core/geometry/snapping";
+import { canEditBoard, useCanEditBoard } from "@/hooks/use-can-edit-board";
 import { createSpaceScene, worldToBoard, TIER_HEIGHT, type SpaceScene } from "@/features/space/scene";
 import type { PortSide } from "@/core/elements/types";
-
-/** Mirrors CanvasWorkspace: guests may only edit once admitted as an editor. */
-function guestCanEdit(): boolean {
-  const { mode, status, role } = useCollaborationStore.getState();
-  return mode !== "guest" || (status === "connected" && role === "editor");
-}
 
 type DragState =
   | { mode: "node"; elementId: string; offsetX: number; offsetY: number; tierY: number; moved: boolean }
@@ -27,6 +21,7 @@ export function SpaceView() {
   const sceneRef = useRef<SpaceScene | null>(null);
   const dragRef = useRef<DragState>(null);
   const [ready, setReady] = useState<"webgl" | "fallback" | null>(null);
+  const canEdit = useCanEditBoard();
 
   useEffect(() => {
     const canvas = canvasRef.current;
@@ -87,7 +82,7 @@ export function SpaceView() {
     }
 
     const hit = scene.pick(ndc);
-    if (hit?.kind === "port" && guestCanEdit()) {
+    if (hit?.kind === "port" && canEditBoard()) {
       dragRef.current = { mode: "connect", elementId: hit.elementId, side: hit.side };
       return;
     }
@@ -96,7 +91,7 @@ export function SpaceView() {
       const element = board?.elements[hit.elementId];
       if (!element) return;
       useSessionStore.getState().setSelected([hit.elementId]);
-      if (element.locked || !guestCanEdit()) return;
+      if (element.locked || !canEditBoard()) return;
       const tierY = element.layer * TIER_HEIGHT;
       const ground = scene.groundPoint(ndc, tierY);
       if (!ground) return;
@@ -163,7 +158,7 @@ export function SpaceView() {
     if (drag.mode === "connect") {
       scene.setConnectGhost(null);
       const hit = scene.pick(toNdc(event));
-      if (hit && hit.elementId !== drag.elementId && guestCanEdit()) {
+      if (hit && hit.elementId !== drag.elementId && canEditBoard()) {
         useBoardStore.getState().createConnector({ elementId: drag.elementId, port: drag.side }, { elementId: hit.elementId, port: "auto" });
       }
       return;
@@ -182,7 +177,7 @@ export function SpaceView() {
         x = snapValue(x, board.preferences.gridSize);
         y = snapValue(y, board.preferences.gridSize);
       }
-      if ((x !== element.x || y !== element.y) && guestCanEdit()) {
+      if ((x !== element.x || y !== element.y) && canEditBoard()) {
         useBoardStore.getState().updateElements([{ elementId: drag.elementId, patch: { x, y } }], "Move shape", "move");
       }
     }
@@ -214,7 +209,7 @@ export function SpaceView() {
       const target = event.target as HTMLElement | null;
       if (target && ["INPUT", "TEXTAREA", "SELECT"].includes(target.tagName)) return;
       const selected = useSessionStore.getState().selectedIds;
-      if (!selected.length) return;
+      if (!selected.length || !canEditBoard()) return;
       event.preventDefault();
       useBoardStore.getState().deleteElements([...selected]);
       useSessionStore.getState().setSelected([]);
@@ -235,7 +230,7 @@ export function SpaceView() {
         onContextMenu={(event) => event.preventDefault()}
       />
       {ready === "fallback" && <p className="space-fallback">This browser cannot create a 3D view. The 2D canvas still has everything.</p>}
-      <p className="space-hint">Drag nodes to move · drag a port to connect · Alt-drag to tilt · Shift-drag to pan · ⌘-scroll to zoom</p>
+      <p className="space-hint">{canEdit ? "Drag nodes to move · drag a port to connect · " : ""}Alt-drag to tilt · Shift-drag to pan · ⌘-scroll to zoom</p>
     </main>
   );
 }

@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it } from "vitest";
 import { createBoard, createShape } from "@/core/board/factory";
-import { parseBoardCommand, setLocalActorIdProvider, setLocalCommandAuthorizationProvider, type BoardCommandMetadata } from "@/core/commands/board-command";
+import { parseBoardCommand, setBoardOwnershipProvider, setLocalActorIdProvider, setLocalCommandAuthorizationProvider, type BoardCommandMetadata } from "@/core/commands/board-command";
 import { valuesEqual } from "@/core/commands/apply-board-command";
 import { useBoardStore } from "@/stores/board-store";
 
@@ -9,6 +9,7 @@ const metadata = (actorId: string, commandId: string): BoardCommandMetadata => (
 afterEach(() => {
   setLocalActorIdProvider(() => "local");
   setLocalCommandAuthorizationProvider(() => true);
+  setBoardOwnershipProvider(() => true);
   useBoardStore.setState({ board: null });
 });
 
@@ -23,6 +24,23 @@ describe("board commands", () => {
     setLocalCommandAuthorizationProvider(() => false);
     expect(useBoardStore.getState().createShape("rectangle", { x: 0, y: 0, width: 100, height: 80 })).toBeNull();
     expect(useBoardStore.getState().board?.elementIds).toEqual([]);
+  });
+
+  it("blocks local mutations when another tab holds the board", () => {
+    useBoardStore.getState().setBoard(createBoard());
+    setBoardOwnershipProvider(() => false);
+    expect(useBoardStore.getState().createShape("rectangle", { x: 0, y: 0, width: 100, height: 80 })).toBeNull();
+    expect(useBoardStore.getState().deleteConnectors(["anything"])).toBeUndefined();
+    expect(useBoardStore.getState().pasteElements([createShape("ellipse", { x: 0, y: 0, width: 10, height: 10 })])).toEqual([]);
+    expect(useBoardStore.getState().board?.elementIds).toEqual([]);
+  });
+
+  it("still applies remote commands to a tab that does not hold the board", () => {
+    useBoardStore.getState().setBoard(createBoard());
+    setBoardOwnershipProvider(() => false);
+    const element = createShape("rectangle", { x: 0, y: 0, width: 100, height: 80 });
+    useBoardStore.getState().dispatchCommand({ type: "elements.create", elements: [element] }, metadata("host", "create"), "remote");
+    expect(useBoardStore.getState().board?.elementIds).toEqual([element.id]);
   });
 
   it("restores an out-of-order multi-element deletion in document order", () => {

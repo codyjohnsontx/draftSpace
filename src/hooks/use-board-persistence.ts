@@ -10,9 +10,14 @@ import { AutosaveCoordinator, type AutosaveEvent } from "@/features/persistence/
 import { loadBoardDocument } from "@/features/persistence/load-board-document";
 import { downloadBackup, serializeBoardBackup, serializeRecoveryBackup, type BackupResult } from "@/features/persistence/backup";
 import { normalizePersistenceError } from "@/features/persistence/persistence-errors";
+import { claimBoard, releaseBoardClaim } from "@/features/persistence/board-lease";
+import { setBoardOwnershipProvider } from "@/core/commands/board-command";
 import { performanceNow, recordPerformanceSample } from "@/features/performance/performance-monitor";
 
 const LAST_BOARD = "draftspace:last-board";
+
+// A tab that does not hold the board's lease cannot mutate the document, whatever the UI does.
+setBoardOwnershipProvider(() => usePersistenceStore.getState().boardAccess === "owner");
 
 const finishBackup = (result: BackupResult) => {
   if (!result.ok) { usePersistenceStore.getState().setError(result.error); return; }
@@ -89,6 +94,8 @@ export function useBoardPersistence(): PersistenceController {
 
   /** A board that is already open is left exactly as it is: `setBoard` would drop its history. */
   const enterSessionOnly = useCallback((error: unknown) => {
+    // Nothing is written in this mode, so hand the board back rather than hold a lease this tab cannot use.
+    releaseBoardClaim(); usePersistenceStore.getState().setBoardAccess("owner");
     if (!useBoardStore.getState().board) {
       const board = createBoard("Temporary draft");
       useBoardStore.getState().setBoard(board);
@@ -103,6 +110,44 @@ export function useBoardPersistence(): PersistenceController {
     catch (error) { console.debug("Draftspace could not list local boards", error); }
   }, [repository]);
 
+  /**
+   * Runs when the owning tab lets the board go. Whatever it saved is the truth now, so the
+   * stored document replaces this tab's stale copy before any editing is allowed. Skipping
+   * that would simply move the overwrite later.
+   */
+  const takeOverBoard = useCallback(async (boardId: string) => {
+    const persistence = usePersistenceStore.getState();
+    persistence.setBoardAccess("owner");
+    try {
+      const result = loadBoardDocument(boardId, await repository.getRawById(boardId));
+      if (result.kind === "invalid") {
+        persistence.requireRecovery({ boardId: result.boardId, raw: result.raw, detectedAt: new Date().toISOString(), reason: "invalid", issues: result.issues }); return;
+      }
+      if (result.kind === "unsupported-version") {
+        persistence.requireRecovery({ boardId: result.boardId, raw: result.raw, detectedAt: new Date().toISOString(), reason: "unsupported-version", issues: ["This board was created by a newer Draftspace schema."], schemaVersion: result.schemaVersion }); return;
+      }
+      // The viewport stays where the reader left it; only the document is replaced.
+      if (result.kind === "ready") useBoardStore.getState().setBoard(result.board);
+      await startCoordinator();
+      persistence.markSaved(useBoardStore.getState().revision, new Date().toISOString());
+    } catch (error) { console.error("Draftspace could not take over this board", error); enterSessionOnly(error); }
+  }, [enterSessionOnly, repository, startCoordinator]);
+
+  /** Claims the board for this tab, or opens read-only when another tab already holds it. */
+  const claim = useCallback(async (boardId: string) => {
+    const lease = await claimBoard({ boardId, onPromoted: () => takeOverBoard(boardId) });
+    usePersistenceStore.getState().setBoardAccess(lease.isOwner ? "owner" : "read-only");
+    return lease;
+  }, [takeOverBoard]);
+
+  const openFirstBoard = useCallback(async () => {
+    const board = createBoard("My first draft");
+    await repository.create(board); localStorage.setItem(LAST_BOARD, board.id);
+    useBoardStore.getState().setBoard(board); useViewportStore.getState().setViewport(board.viewport);
+    await claim(board.id); await startCoordinator();
+    usePersistenceStore.getState().markSaved(0, new Date().toISOString());
+  }, [claim, repository, startCoordinator]);
+
   useEffect(() => {
     if (initialized.current) return; initialized.current = true;
     const persistence = usePersistenceStore.getState();
@@ -110,20 +155,12 @@ export function useBoardPersistence(): PersistenceController {
     void (async () => {
       try {
         const id = localStorage.getItem(LAST_BOARD);
-        if (!id) {
-          const board = createBoard("My first draft");
-          await repository.create(board); localStorage.setItem(LAST_BOARD, board.id);
-          useBoardStore.getState().setBoard(board); useViewportStore.getState().setViewport(board.viewport);
-          await startCoordinator(); persistence.markSaved(0, new Date().toISOString()); return;
-        }
+        if (!id) { await openFirstBoard(); return; }
         const loadStartedAt = performanceNow();
-        const result = loadBoardDocument(id, await repository.getRawById(id));
-        if (result.kind === "missing") {
-          const board = createBoard("My first draft");
-          await repository.create(board); localStorage.setItem(LAST_BOARD, board.id);
-          useBoardStore.getState().setBoard(board); useViewportStore.getState().setViewport(board.viewport);
-          await startCoordinator(); persistence.markSaved(0, new Date().toISOString()); return;
-        }
+        // The claim runs alongside the read so a lone tab waits on neither.
+        const [lease, raw] = await Promise.all([claim(id), repository.getRawById(id)]);
+        const result = loadBoardDocument(id, raw);
+        if (result.kind === "missing") { await openFirstBoard(); return; }
         if (result.kind === "invalid") {
           persistence.requireRecovery({ boardId: result.boardId, raw: result.raw, detectedAt: new Date().toISOString(), reason: "invalid", issues: result.issues }); return;
         }
@@ -133,11 +170,13 @@ export function useBoardPersistence(): PersistenceController {
         useBoardStore.getState().setBoard(result.board);
         useViewportStore.getState().setViewport(result.board.preferences.restoreViewport ? result.board.viewport : { x: 0, y: 0, zoom: 1 });
         recordPerformanceSample({ name: "board-load", durationMs: performanceNow() - loadStartedAt, elementCount: result.board.elementIds.length });
+        // A tab that does not own the board writes nothing at all, not even the migration.
+        if (!lease.isOwner) { persistence.markSaved(0, new Date().toISOString()); return; }
         if (result.migrated) await repository.update(result.board);
         await startCoordinator(); persistence.markSaved(0, new Date().toISOString());
       } catch (error) { console.error("Draftspace could not initialize local persistence", error); enterSessionOnly(error); }
     })();
-  }, [enterSessionOnly, repository, startCoordinator]);
+  }, [claim, enterSessionOnly, openFirstBoard, repository, startCoordinator]);
 
   useEffect(() => () => coordinator.current?.dispose(), []);
 
@@ -179,6 +218,10 @@ export function useBoardPersistence(): PersistenceController {
     try {
       await drainCoordinator();
       const board = useBoardStore.getState().board; if (!board) return;
+      // Storage is back, but another tab may have claimed this board meanwhile. Stay temporary
+      // rather than overwrite it; the backup download is still there.
+      const lease = await claim(board.id);
+      if (!lease.isOwner) { usePersistenceStore.getState().setBoardAccess("read-only"); return; }
       const savedRevision = useBoardStore.getState().revision;
       usePersistenceStore.getState().markSaving(savedRevision);
       const existing = await repository.getRawById(board.id);
@@ -191,7 +234,7 @@ export function useBoardPersistence(): PersistenceController {
       const latestRevision = useBoardStore.getState().revision;
       if (latestRevision > savedRevision) activeCoordinator.schedule(latestRevision);
     } catch (error) { usePersistenceStore.getState().enterSessionOnly(normalizePersistenceError(error, "write")); }
-  }, [drainCoordinator, repository, startCoordinator]);
+  }, [claim, drainCoordinator, repository, startCoordinator]);
 
   const startNewBoard = useCallback(async () => {
     await drainCoordinator();
@@ -200,6 +243,8 @@ export function useBoardPersistence(): PersistenceController {
     const savedRevision = useBoardStore.getState().revision;
     usePersistenceStore.getState().markSaving(savedRevision);
     try {
+      // A fresh board has a fresh id, so this tab always owns it, even if it was read-only before.
+      await claim(board.id);
       await repository.create(board); localStorage.setItem(LAST_BOARD, board.id); const activeCoordinator = await startCoordinator();
       usePersistenceStore.getState().markSaved(savedRevision, new Date().toISOString());
       const latestRevision = useBoardStore.getState().revision;
@@ -207,7 +252,7 @@ export function useBoardPersistence(): PersistenceController {
       usePersistenceStore.getState().clearRecovery();
     }
     catch (error) { enterSessionOnly(normalizePersistenceError(error, "write")); }
-  }, [drainCoordinator, enterSessionOnly, repository, startCoordinator]);
+  }, [claim, drainCoordinator, enterSessionOnly, repository, startCoordinator]);
 
   /**
    * Opens another stored board in place. The board being left is settled first: whatever is still

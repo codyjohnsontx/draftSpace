@@ -16,6 +16,7 @@ import { useBoardStore } from "@/stores/board-store";
 import { initializePerformanceMonitor } from "@/features/performance/performance-monitor";
 import { useUiPreferencesStore } from "@/stores/ui-preferences-store";
 import { StyleInspector } from "@/components/inspector/style-inspector";
+import { BoardAccessBanner } from "./board-access-banner";
 import { collaborationController } from "@/features/collaboration/collaboration-controller";
 import { collaborationEnabled } from "@/features/collaboration/collaboration-enabled";
 
@@ -43,5 +44,5 @@ export function DraftspaceShell() {
   if (status === "recovery-required" && recovery) return <BoardRecoveryScreen recovery={recovery} controller={persistence} />;
   if (capabilities && !capabilities.canvas2d) return <UnsupportedBrowserScreen canDownloadBackup={Boolean(board)} onDownloadBackup={persistence.downloadCurrentBackup} />;
   if (!capabilities) return <div className="loading-canvas"><span /><p>Checking canvas support…</p></div>;
-  return <div className="draftspace-shell" data-inspector-mode={inspectorMode} data-view-mode={viewMode}>{viewMode === "space" ? <SpaceView /> : <CanvasWorkspace />}<StyleInspector /><TopBar persistence={persistence} /></div>;
+  return <div className="draftspace-shell" data-inspector-mode={inspectorMode} data-view-mode={viewMode}>{viewMode === "space" ? <SpaceView /> : <CanvasWorkspace />}<StyleInspector /><TopBar persistence={persistence} /><BoardAccessBanner /></div>;
 }

@@ -17,6 +17,13 @@ Open pull requests as drafts and work there. Draft pull requests are not reviewe
 so the pipeline's own fix commits cost nothing, and the author marks it ready when
 the branch is finished.
 
+## Invariants worth knowing before you edit
+
+
+**One tab owns a board.** Only the tab holding the board's Web Locks claim may edit or save it; every other tab on the same board is read-only. Two things follow. Any new control that mutates the document must gate on `useCanEditBoard()` / `canEditBoard()` (`src/hooks/use-can-edit-board.ts`) rather than reading the collaboration store directly, and `dispatchCommand` enforces the same rule for local commands as a backstop. Any new write path must run only when the tab owns the board. See "One tab owns a board" in `docs/architecture.md` for the design and the alternatives that were rejected.
+
+**Four test suites, not one.** `npm test` (vitest), `npm run test:e2e`, `npm run test:performance`, `npm run test:collaboration`, plus `npm run collaboration:test` for the worker. The Playwright suites are WebGL-heavy and time out under parallel workers on a loaded machine; run them with `--workers=1` locally, as CI does.
+
 ## Maintaining this file
 
 Keep this file for knowledge useful to almost every future agent session in this project.
