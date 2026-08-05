@@ -9,9 +9,13 @@
 # app plus a Cloudflare Worker), not copied from it.
 
 reviews:
-  # Already the default. Stated explicitly so nobody "tunes" it to assertive
-  # later and wonders where the noise came from.
-  profile: chill
+  # Matches the org setting, which reads ASSERTIVE on DiazMartialArts pull
+  # requests that carry no repo config at all. A repo that ships a config file
+  # was separately observed reporting CHILL. Neither observation says what a
+  # config file that omits this key does - nobody has run that experiment - so
+  # the key stays written out rather than relying on unverified defaulting or
+  # inheritance.
+  profile: assertive
 
   auto_review:
     enabled: true
