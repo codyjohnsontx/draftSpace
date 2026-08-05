@@ -345,6 +345,10 @@ test("wires two shapes together, previews the edge, and undoes in one step", asy
   await page.mouse.click(460, 250);
   await expect(page.locator(".connector-selection")).toHaveCount(1);
   await page.keyboard.press("ControlOrMeta+c");
+  // Duplicate cannot act on an edge either: it adds nothing and leaves the halo where it was.
+  await page.keyboard.press("ControlOrMeta+d");
+  await expect(page.locator(".connector-selection")).toHaveCount(1);
+  expect(await canvas.getAttribute("data-element-count")).toBe("2");
   await page.keyboard.press("ControlOrMeta+v");
   await expect.poll(() => canvas.getAttribute("data-element-count")).toBe("3");
   await page.keyboard.press("ControlOrMeta+z");

@@ -1,7 +1,7 @@
 import type { BoardDocument } from "@/core/board/types";
 import type { CanvasElement, ConnectorEndpoint, Point, PortSide } from "@/core/elements/types";
 import { shapeContainsPoint } from "@/core/geometry/hit-testing";
-import { PORT_SIDES, portPoint } from "./ports";
+import { PORT_SIDES, portPoint, portX, portY } from "./ports";
 import { routeConnector } from "./routing";
 
 /** Screen radius within which a press takes an element's port rather than the element itself. */
@@ -26,14 +26,22 @@ export function elementPorts(element: CanvasElement): PortAnchor[] {
  * whichever port the geometry faces at the time. Ports are asked about before
  * the body of the same element, so a dot half outside a silhouette is still
  * grabbable, but never before the body of an element drawn over it.
+ *
+ * This runs over every object on the board on every pointer move the tool is
+ * armed for, so it measures the four anchors where they lie rather than
+ * building them.
  */
 export function connectPick(elements: readonly CanvasElement[], point: Point, zoom: number): ConnectorEndpoint | null {
   const reach = PORT_HIT_RADIUS / zoom;
+  const reachSquared = reach * reach;
   for (let index = elements.length - 1; index >= 0; index -= 1) {
     const element = elements[index];
     if (!connectable(element)) continue;
-    for (const { side, point: anchor } of elementPorts(element)) {
-      if (Math.hypot(anchor.x - point.x, anchor.y - point.y) <= reach) return { elementId: element.id, port: side };
+    for (let sideIndex = 0; sideIndex < PORT_SIDES.length; sideIndex += 1) {
+      const side = PORT_SIDES[sideIndex];
+      const dx = portX(element, side) - point.x;
+      const dy = portY(element, side) - point.y;
+      if (dx * dx + dy * dy <= reachSquared) return { elementId: element.id, port: side };
     }
     if (shapeContainsPoint(element, point, BODY_HIT_PADDING / zoom)) return { elementId: element.id, port: "auto" };
   }
