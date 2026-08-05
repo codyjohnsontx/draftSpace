@@ -43,6 +43,13 @@ describe("persistence UI", () => {
     expect(screen.queryByText(/Local storage is unavailable/)).not.toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Retry storage" })).toBeVisible();
   });
+  it("names the board a rescued draft was saved into", () => {
+    usePersistenceStore.setState({ status: "saved", error: persistenceError("board-saved-as-copy", 'Saved as "My first draft (recovered copy)".', false) });
+    render(<PersistenceStatus controller={controller()} />);
+    fireEvent.click(screen.getByRole("button", { name: "Saved as a copy" }));
+    expect(screen.getByRole("dialog", { name: "Saved as a copy" })).toBeVisible();
+    expect(screen.getByText('Saved as "My first draft (recovered copy)".')).toBeVisible();
+  });
   it("renders saved state as non-actionable status", () => { render(<PersistenceStatus controller={controller()} />); expect(screen.queryByRole("button", { name: "Saved locally" })).not.toBeInTheDocument(); expect(screen.getByText("Saved locally")).toBeVisible(); });
   it("describes a successful local save while offline", () => { usePersistenceStore.setState({ status: "saved", networkOnline: false }); render(<PersistenceStatus controller={controller()} />); expect(screen.getByText("Saved offline")).toBeVisible(); });
 });

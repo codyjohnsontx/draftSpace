@@ -1,6 +1,7 @@
 export type PersistenceErrorCode =
   | "storage-unavailable"
   | "board-claimed-elsewhere"
+  | "board-saved-as-copy"
   | "read-failed"
   | "write-failed"
   | "validation-failed"
@@ -17,6 +18,7 @@ export type PersistenceError = {
 const PERSISTENCE_ERROR_CODES = new Set<string>([
   "storage-unavailable",
   "board-claimed-elsewhere",
+  "board-saved-as-copy",
   "read-failed",
   "write-failed",
   "validation-failed",
