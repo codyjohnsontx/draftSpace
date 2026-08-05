@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { DEFAULT_CONNECTOR_ARROWS } from "@/core/elements/types";
+import { CONNECTOR_LABEL_MAX_LENGTH, DEFAULT_CONNECTOR_ARROWS } from "@/core/elements/types";
 
 const finite = z.number().finite();
 const color = z.string().min(1).max(64);
@@ -54,7 +54,7 @@ export const connectorSchema = z.object({
   kind: z.enum(["sync", "async", "data"]),
   // Defaulted rather than versioned: every edge written before heads were choosable pointed at its target.
   arrows: connectorArrowsSchema.default(DEFAULT_CONNECTOR_ARROWS),
-  label: z.string().max(120).nullable(),
+  label: z.string().max(CONNECTOR_LABEL_MAX_LENGTH).nullable(),
   strokeColor: color,
   strokeWidth: finite.positive(),
   locked: z.boolean(),

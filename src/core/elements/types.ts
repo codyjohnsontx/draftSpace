@@ -55,6 +55,8 @@ export type PortSide = "n" | "e" | "s" | "w";
 export type ConnectorPort = PortSide | "auto";
 export type ConnectorEndpoint = { elementId: ElementId; port: ConnectorPort };
 export type ConnectorKind = "sync" | "async" | "data";
+/** How long a name an edge may carry. One definition feeds the schema, the command validator, and the inspector's input, so the bound cannot drift. */
+export const CONNECTOR_LABEL_MAX_LENGTH = 120;
 /** Which ends of an edge carry a head, named for the ends of the binding rather than for a direction on screen. */
 export type ConnectorArrows = "none" | "end" | "start" | "both";
 /** A new edge points at what it was dragged to, which is also how every edge drawn before this was drawn. */
