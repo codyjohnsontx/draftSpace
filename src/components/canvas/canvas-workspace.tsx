@@ -212,8 +212,8 @@ export function CanvasWorkspace() {
       }
       else if (mod && key === "d" && guestCanEdit) { event.preventDefault(); useSessionStore.getState().setSelected(useBoardStore.getState().duplicateElements(selectedIds)); }
       else if (mod && key === "a") { event.preventDefault(); useSessionStore.getState().setSelected(ordered.filter((e) => !e.locked && !e.hidden).map((e) => e.id)); }
-      else if (mod && key === "c") { event.preventDefault(); await copyElements(ordered.filter((e) => selectedIdSet.has(e.id))); }
-      else if (mod && key === "x" && guestCanEdit) { event.preventDefault(); const elements = ordered.filter((e) => selectedIdSet.has(e.id)); await copyElements(elements); useBoardStore.getState().deleteElements(selectedIds); useSessionStore.getState().setSelected([]); }
+      else if (mod && key === "c" && selectedIds.length) { event.preventDefault(); await copyElements(ordered.filter((e) => selectedIdSet.has(e.id))); }
+      else if (mod && key === "x" && selectedIds.length && guestCanEdit) { event.preventDefault(); const elements = ordered.filter((e) => selectedIdSet.has(e.id)); await copyElements(elements); useBoardStore.getState().deleteElements(selectedIds); useSessionStore.getState().setSelected([]); }
       else if (mod && key === "v" && guestCanEdit) { event.preventDefault(); useSessionStore.getState().setSelected(useBoardStore.getState().pasteElements(await readElements())); }
       else if (["ArrowUp", "ArrowDown", "ArrowLeft", "ArrowRight"].includes(event.key) && selectedIds.length && guestCanEdit) {
         event.preventDefault(); const amount = event.shiftKey ? 10 : 1; const dx = event.key === "ArrowLeft" ? -amount : event.key === "ArrowRight" ? amount : 0; const dy = event.key === "ArrowUp" ? -amount : event.key === "ArrowDown" ? amount : 0;

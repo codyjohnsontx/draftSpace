@@ -337,6 +337,19 @@ test("wires two shapes together, previews the edge, and undoes in one step", asy
   await page.keyboard.press("ControlOrMeta+z");
   await expect.poll(async () => (await storedConnectors()).length).toBe(1);
 
+  // An edge cannot be copied, and the verb that cannot act leaves the last copy where it was:
+  // copying a shape and then taking an edge still pastes the shape.
+  await page.mouse.click(290, 250);
+  await expect(page.locator("[data-resize-handle]")).toHaveCount(8);
+  await page.keyboard.press("ControlOrMeta+c");
+  await page.mouse.click(460, 250);
+  await expect(page.locator(".connector-selection")).toHaveCount(1);
+  await page.keyboard.press("ControlOrMeta+c");
+  await page.keyboard.press("ControlOrMeta+v");
+  await expect.poll(() => canvas.getAttribute("data-element-count")).toBe("3");
+  await page.keyboard.press("ControlOrMeta+z");
+  await expect.poll(() => canvas.getAttribute("data-element-count")).toBe("2");
+
   // A selection holds elements or edges, never both, so taking a shape drops the edge.
   await page.mouse.click(460, 250);
   await expect(page.locator(".connector-selection")).toHaveCount(1);
