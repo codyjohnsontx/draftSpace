@@ -119,7 +119,7 @@ This roadmap favors interaction trust over feature count. Draftspace should earn
 
 **Goal:** Make system and process diagrams a first-class Draftspace workflow.
 
-- [x] Explicit connector bindings and anchor previews
+- [x] Connector tool with a direct toolbar button and C shortcut, explicit bindings, and anchor previews
 - [x] Connector selection and deletion
 - [x] Connector styling: color, width, kind, and label
 - [x] Arrowheads at either end, both, or neither *(a defaulted field; no schema version)*

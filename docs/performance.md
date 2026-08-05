@@ -2,9 +2,9 @@
 
 ## Methodology
 
-The benchmark suite measures deterministic schema-version-2 boards containing 100, 500, or 1,000 rectangles. Rectangles remain the benchmark element type so Phase 2.1A can be compared with the Phase 1.2B baseline. The `all-visible` fixture packs every minimum-readable rectangle within one 1280×720 viewport. The `distributed` fixture spaces the same deterministic elements across a large world grid so only a small subset is visible at once. Fixtures use fixed IDs, timestamps, dimensions, positions, and styles, and are validated with the production Zod schema.
+The benchmark suite measures deterministic boards at the current board schema version containing 100, 500, or 1,000 rectangles. Rectangles remain the benchmark element type so Phase 2.1A can be compared with the Phase 1.2B baseline. The `all-visible` fixture packs every minimum-readable rectangle within one 1280×720 viewport. The `distributed` fixture spaces the same deterministic elements across a large world grid so only a small subset is visible at once. Fixtures use fixed IDs, timestamps, dimensions, positions, and styles, and are validated with the production Zod schema.
 
-Playwright creates an isolated browser context, writes the fixture directly to IndexedDB, sets the last-opened board key, and reloads Draftspace in benchmark mode. It never uses a developer's browser profile or normal board history. The first five scene updates are warmed and discarded. Each measured run performs 30 pan/zoom updates, 50 point selections across hits and misses, 10 committed marquee gestures, and five separately saved board changes. Reports contain environment and timing metadata only—never board content.
+Playwright creates an isolated browser context, writes the fixture directly to IndexedDB, sets the last-opened board key, and reloads Draftspace in benchmark mode. It never uses a developer's browser profile or normal board history. The first five scene updates are warmed and discarded. Each measured run performs 30 pan/zoom updates, 50 point selections across hits and misses, 10 committed marquee gestures, five separately saved board changes, and a pointer sweep across content and empty canvas with the connector tool armed. Reports contain environment and timing metadata only, never board content.
 
 The 100- and 500-element fixtures run once per layout. Each 1,000-element fixture runs three times. CI compares the median of the three per-run p95 values with the safety cap. Raw JSON is retained as a local or CI artifact and is not committed.
 
@@ -39,7 +39,7 @@ Product targets guide optimization but are not initial CI gates. CI fails only f
 
 Reference machine: 14-inch MacBook Pro, Apple M1 Pro (10 cores), 16 GB memory, macOS; Playwright Chromium 149; 1280×720 viewport; device pixel ratio 1; reported hardware concurrency 10.
 
-This preserved Phase 1.2B reference used schema-version-1 rectangle fixtures. Current fixtures serialize the same rectangle workload as schema version 2; the benchmark report schema remains version 1 because its format is independent of board documents.
+This preserved Phase 1.2B reference used schema-version-1 rectangle fixtures. Current fixtures serialize the same rectangle workload at the current schema version (see [`architecture.md`](architecture.md)); the benchmark report schema remains version 1 because its format is independent of board documents.
 
 Values below are the median of three per-run p95 values for the 1,000-element fixtures.
 
