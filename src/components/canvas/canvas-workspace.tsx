@@ -2,7 +2,9 @@
 
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type PointerEvent as ReactPointerEvent } from "react";
 import type { Viewport } from "@/core/board/types";
-import type { Bounds, CanvasElement, Point, ShapeType } from "@/core/elements/types";
+import type { Bounds, CanvasElement, ConnectorEndpoint, Point, ShapeType } from "@/core/elements/types";
+import { bindingExists, connectorDraft, connectPick, elementPorts } from "@/core/connectors/binding";
+import { hitTestConnectors, selectedConnectorPolylines } from "@/core/connectors/selection";
 import { creationBounds, normalizeBounds, selectionBounds } from "@/core/geometry/bounds";
 import { elementsContainedByBounds, hitTestElements } from "@/core/geometry/hit-testing";
 import { screenToWorld } from "@/core/geometry/coordinates";
@@ -13,13 +15,14 @@ import { copyElements, readElements } from "@/features/clipboard/clipboard";
 import { useBoardStore } from "@/stores/board-store";
 import { useSessionStore, type ResizeHandle } from "@/stores/session-store";
 import { useViewportStore } from "@/stores/viewport-store";
+import { boardConnectors } from "@/core/rendering/render-scene";
 import { SceneCanvas } from "./scene-canvas";
-import { InteractionOverlay } from "./interaction-overlay";
+import { InteractionOverlay, type ConnectOverlay } from "./interaction-overlay";
 import { ToolRail } from "@/components/toolbar/tool-rail";
 import { ViewportControls } from "@/components/controls/viewport-controls";
 import { observeElementSize } from "@/lib/browser/observe-element-size";
 import { markInteraction, measurePerformance } from "@/features/performance/performance-monitor";
-import { applyStylePreview } from "@/features/inspector/style-values";
+import { applyConnectorPreview, applyStylePreview } from "@/features/inspector/style-values";
 import { collaborationController } from "@/features/collaboration/collaboration-controller";
 import { useCollaborationStore } from "@/stores/collaboration-store";
 import { RemotePresenceOverlay } from "@/components/collaboration/remote-presence-overlay";
@@ -27,6 +30,8 @@ import { RemotePresenceOverlay } from "@/components/collaboration/remote-presenc
 type Gesture =
   | { type: "pan"; pointerId: number; start: Point; viewport: Viewport }
   | { type: "draw"; shapeType: ShapeType; pointerId: number; origin: Point; current: Point; square: boolean; fromCenter: boolean }
+  // An edge looking for its other end: the binding it left from, the one under the pointer, and where the pointer is.
+  | { type: "connect"; pointerId: number; from: ConnectorEndpoint; to: ConnectorEndpoint | null; pointer: Point }
   | { type: "marquee"; pointerId: number; origin: Point; current: Point; additive: boolean }
   | { type: "move"; pointerId: number; origin: Point; current: Point; initial: CanvasElement[] }
   | { type: "resize"; pointerId: number; origin: Point; current: Point; handle: ResizeHandle; initialBounds: Bounds; initial: CanvasElement[]; preserveAspect: boolean; fromCenter: boolean }
@@ -36,10 +41,12 @@ const isShapeTool = (tool: string): tool is ShapeType => tool === "rectangle" ||
 
 export function CanvasWorkspace() {
   const board = useBoardStore((s) => s.board); const viewport = useViewportStore((s) => s.viewport);
-  const selectedIds = useSessionStore((s) => s.selectedIds); const activeTool = useSessionStore((s) => s.activeTool); const spaceHeld = useSessionStore((s) => s.spaceHeld);
-  const stylePreview = useSessionStore((s) => s.stylePreview);
+  const selectedIds = useSessionStore((s) => s.selectedIds); const selectedConnectorIds = useSessionStore((s) => s.selectedConnectorIds); const activeTool = useSessionStore((s) => s.activeTool); const spaceHeld = useSessionStore((s) => s.spaceHeld);
+  const stylePreview = useSessionStore((s) => s.stylePreview); const connectorStylePreview = useSessionStore((s) => s.connectorStylePreview);
   const collaborationMode = useCollaborationStore((s) => s.mode); const collaborationStatus = useCollaborationStore((s) => s.status); const collaborationRole = useCollaborationStore((s) => s.role); const followingHost = useCollaborationStore((s) => s.followingHost);
   const rootRef = useRef<HTMLDivElement>(null); const [gesture, setGesture] = useState<Gesture>(null); const [size, setSize] = useState({ width: 0, height: 0 });
+  // What the connector tool is pointing at while it is not dragging, so a hover shows where an edge would land.
+  const [connectHover, setConnectHover] = useState<ConnectorEndpoint | null>(null);
   const lastPresenceAt = useRef(0);
   const guestCanEdit = collaborationMode !== "guest" || (collaborationStatus === "connected" && collaborationRole === "editor");
 
@@ -56,15 +63,21 @@ export function CanvasWorkspace() {
     return board?.preferences.snapToGrid && current.initial[0] ? snappedMoveDelta(current.initial[0], delta, board.preferences.gridSize) : delta;
   }, [board]);
 
-  const displayed = useMemo(() => {
-    const current = gesture; if (!current || (current.type !== "move" && current.type !== "resize")) return ordered;
+  // What a move or a resize is showing in place of the board's own elements, keyed by id. It is only
+  // the elements the gesture holds, so an edge bound to one can be routed against the box it is being
+  // drawn at without walking the board.
+  const elementPreview = useMemo(() => {
+    const current = gesture; if (!current || (current.type !== "move" && current.type !== "resize")) return null;
     let changed: CanvasElement[];
     if (current.type === "move") { const { x: dx, y: dy } = moveDelta(current); changed = current.initial.map((e) => ({ ...e, x: e.x + dx, y: e.y + dy })); }
     else { const next = resizedBounds(current.initialBounds, current.handle, { x: current.current.x - current.origin.x, y: current.current.y - current.origin.y }, { preserveAspect: current.preserveAspect, fromCenter: current.fromCenter }); changed = scaleElements(current.initial, current.initialBounds, next); }
-    const map = new Map(changed.map((e) => [e.id, e])); return ordered.map((e) => map.get(e.id) ?? e);
-  }, [ordered, gesture, moveDelta]);
+    return new Map(changed.map((e) => [e.id, e]));
+  }, [gesture, moveDelta]);
+  const displayed = useMemo(() => elementPreview ? ordered.map((e) => elementPreview.get(e.id) ?? e) : ordered, [ordered, elementPreview]);
   const stylePreviewIds = useMemo(() => new Set(stylePreview?.elementIds ?? []), [stylePreview]);
   const renderedElements = useMemo(() => stylePreview ? displayed.map((element) => applyStylePreview(element, stylePreview, stylePreviewIds)) : displayed, [displayed, stylePreview, stylePreviewIds]);
+  // An edge style being tried out is drawn from the previewed set; with nothing being tried the canvas reads the board's own edges.
+  const renderedConnectors = useMemo(() => board && connectorStylePreview ? boardConnectors(board).map((connector) => applyConnectorPreview(connector, connectorStylePreview)) : undefined, [board, connectorStylePreview]);
 
   const selectedIdSet = useMemo(() => new Set(selectedIds), [selectedIds]);
   const selectedElements = displayed.filter((e) => selectedIdSet.has(e.id));
@@ -74,6 +87,19 @@ export function CanvasWorkspace() {
   const draftBounds = rawDraft && board?.preferences.snapToGrid ? snapBoundsToGrid(rawDraft, board.preferences.gridSize) : rawDraft;
   const draftShape = current?.type === "draw" && draftBounds ? { type: current.shapeType, bounds: draftBounds } : null;
   const marquee = current?.type === "marquee" ? normalizeBounds(current.origin, current.current) : null;
+  // A connect gesture shows both of its ends; an idle tool shows whatever the pointer is over.
+  const connecting = current?.type === "connect" ? current : null;
+  const connectAnchors = activeTool !== "connector" ? [] : connecting ? [connecting.from, ...(connecting.to ? [connecting.to] : [])] : connectHover ? [connectHover] : [];
+  const connect: ConnectOverlay | null = activeTool !== "connector" ? null : {
+    ports: connectAnchors.flatMap((anchor) => {
+      const element = board?.elements[anchor.elementId];
+      return element ? elementPorts(element).map(({ side, point }) => ({ key: `${anchor.elementId}:${side}`, point, active: side === anchor.port })) : [];
+    }),
+    draft: board && connecting ? connectorDraft(board.elements, connecting.from, connecting.to, connecting.pointer) : null,
+  };
+  // A selected edge is haloed on the route the canvas draws, from the same document and the same
+  // gesture preview, so the halo and the edge under it can never disagree about where it runs.
+  const connectorSelection = useMemo(() => board && selectedConnectorIds.length ? selectedConnectorPolylines(board, selectedConnectorIds, elementPreview) : [], [board, selectedConnectorIds, elementPreview]);
   const snapPreview = board?.preferences.snapToGrid && (current?.type === "draw" || current?.type === "move") ? (current.type === "draw" ? draftBounds : selectedBounds) : null;
 
   const onPointerDown = (event: ReactPointerEvent<HTMLDivElement>) => {
@@ -86,6 +112,11 @@ export function CanvasWorkspace() {
     if (followingHost) collaborationController.setFollowingHost(false);
     if (event.button === 1 || activeTool === "hand" || spaceHeld) setGesture({ type: "pan", pointerId: event.pointerId, start: screen, viewport });
     else if (handle && selectedBounds && guestCanEdit) setGesture({ type: "resize", pointerId: event.pointerId, origin: world, current: world, handle, initialBounds: selectedBounds, initial: selectedElements, preserveAspect: event.shiftKey, fromCenter: event.altKey });
+    else if (activeTool === "connector" && guestCanEdit) {
+      // A press on empty board starts nothing: an edge has to leave from something.
+      const from = connectPick(ordered, world, viewport.zoom);
+      if (from) setGesture({ type: "connect", pointerId: event.pointerId, from, to: null, pointer: world });
+    }
     else if (isShapeTool(activeTool) && guestCanEdit) setGesture({ type: "draw", shapeType: activeTool, pointerId: event.pointerId, origin: world, current: world, square: event.shiftKey, fromCenter: event.altKey });
     else {
       const hit = measurePerformance("point-hit-test", ordered.length, () => hitTestElements(ordered, world, 6 / viewport.zoom));
@@ -95,6 +126,14 @@ export function CanvasWorkspace() {
         if (!guestCanEdit) return;
         const idSet = ids === selectedIds ? selectedIdSet : new Set(ids);
         setGesture({ type: "move", pointerId: event.pointerId, origin: world, current: world, initial: ordered.filter((e) => idSet.has(e.id)) });
+        return;
+      }
+      // Every element is drawn over every edge, so an edge is only taken where nothing else was.
+      // Taking one starts no gesture: an edge is bound to its ends rather than placed, so there is nothing to drag.
+      const edge = hitTestConnectors(board, world, viewport.zoom);
+      if (edge) {
+        if (event.shiftKey) useSessionStore.getState().toggleSelectedConnector(edge.id);
+        else useSessionStore.getState().setSelectedConnectors([edge.id]);
       } else setGesture({ type: "marquee", pointerId: event.pointerId, origin: world, current: world, additive: event.shiftKey });
     }
   };
@@ -102,10 +141,20 @@ export function CanvasWorkspace() {
   const onPointerMove = (event: ReactPointerEvent<HTMLDivElement>) => {
     const pointer = worldPoint(event); useSessionStore.getState().setPointerWorld(pointer);
     if (performance.now() - lastPresenceAt.current >= 50) { lastPresenceAt.current = performance.now(); collaborationController.publishPresence({ cursor: pointer }); }
-    const current = gesture; if (!current || current.pointerId !== event.pointerId) return;
+    const current = gesture;
+    // Anchors follow the pointer only while the connector tool is idle; a drag shows its own two ends instead.
+    if (!current && activeTool === "connector") {
+      const hovered = measurePerformance("connect-pick", ordered.length, () => connectPick(ordered, pointer, viewport.zoom));
+      if (hovered?.elementId !== connectHover?.elementId || hovered?.port !== connectHover?.port) setConnectHover(hovered);
+    } else if (connectHover) setConnectHover(null);
+    if (!current || current.pointerId !== event.pointerId) return;
     if (current.type === "pan" || current.type === "move" || current.type === "resize") markInteraction(ordered.length);
     if (current.type === "pan") {
       const p = localPoint(event); useViewportStore.getState().setViewport({ ...current.viewport, x: current.viewport.x + p.x - current.start.x, y: current.viewport.y + p.y - current.start.y });
+    } else if (current.type === "connect") {
+      // An edge cannot end where it began, so the object it left from is not a target for it.
+      const hovered = connectPick(ordered, pointer, viewport.zoom);
+      setGesture({ ...current, to: hovered && hovered.elementId !== current.from.elementId ? hovered : null, pointer });
     } else if (current.type === "draw") setGesture({ ...current, current: worldPoint(event), square: event.shiftKey, fromCenter: event.altKey });
     else if (current.type === "resize") setGesture({ ...current, current: worldPoint(event), preserveAspect: event.shiftKey, fromCenter: event.altKey });
     else setGesture({ ...current, current: worldPoint(event) });
@@ -119,6 +168,11 @@ export function CanvasWorkspace() {
       if (bounds.width < 4 && bounds.height < 4) bounds = { x: current.origin.x, y: current.origin.y, width: 160, height: 100 };
       if (board.preferences.snapToGrid) bounds = snapBoundsToGrid(bounds, board.preferences.gridSize);
       if (bounds.width >= 16 && bounds.height >= 16) { const id = useBoardStore.getState().createShape(current.shapeType, bounds); if (id) useSessionStore.getState().setSelected([id]); useSessionStore.getState().setTool("select"); }
+    } else if (current.type === "connect") {
+      // The connector stays armed and does not select what it just wired: a diagram is many edges,
+      // and a halo over the edge you are still wiring from would be noise.
+      // Wiring one pair the same way twice would only stack an invisible duplicate.
+      if (current.to && !bindingExists(board, current.from, current.to)) useBoardStore.getState().createConnector(current.from, current.to);
     } else if (current.type === "marquee") {
       const bounds = normalizeBounds(current.origin, current.current);
       const found = measurePerformance("marquee-select", ordered.length, () => elementsContainedByBounds(ordered, bounds)).map((element) => element.id);
@@ -143,13 +197,19 @@ export function CanvasWorkspace() {
       else if (!mod && key === "r" && guestCanEdit) useSessionStore.getState().setTool("rectangle");
       else if (!mod && key === "e" && guestCanEdit) useSessionStore.getState().setTool("ellipse");
       else if (!mod && key === "d" && guestCanEdit) useSessionStore.getState().setTool("diamond");
+      else if (!mod && key === "c" && guestCanEdit) useSessionStore.getState().setTool("connector");
       else if (event.key === "Escape") {
         if (gesture) { setGesture(null); if (gesture.type === "draw") useSessionStore.getState().setTool("select"); }
         else { useSessionStore.getState().setSelected([]); useSessionStore.getState().setTool("select"); }
       }
       else if (mod && key === "z") { event.preventDefault(); if (event.shiftKey) useBoardStore.getState().redo(); else useBoardStore.getState().undo(); }
       else if (mod && key === "y") { event.preventDefault(); useBoardStore.getState().redo(); }
-      else if ((event.key === "Delete" || event.key === "Backspace") && selectedIds.length && guestCanEdit) { event.preventDefault(); useBoardStore.getState().deleteElements(selectedIds); useSessionStore.getState().setSelected([]); }
+      else if ((event.key === "Delete" || event.key === "Backspace") && (selectedIds.length || selectedConnectorIds.length) && guestCanEdit) {
+        event.preventDefault();
+        // The selection holds elements or edges, never both, so one of these is always what was meant.
+        if (selectedConnectorIds.length) { useBoardStore.getState().deleteConnectors(selectedConnectorIds); useSessionStore.getState().setSelectedConnectors([]); }
+        else { useBoardStore.getState().deleteElements(selectedIds); useSessionStore.getState().setSelected([]); }
+      }
       else if (mod && key === "d" && guestCanEdit) { event.preventDefault(); useSessionStore.getState().setSelected(useBoardStore.getState().duplicateElements(selectedIds)); }
       else if (mod && key === "a") { event.preventDefault(); useSessionStore.getState().setSelected(ordered.filter((e) => !e.locked && !e.hidden).map((e) => e.id)); }
       else if (mod && key === "c") { event.preventDefault(); await copyElements(ordered.filter((e) => selectedIdSet.has(e.id))); }
@@ -163,7 +223,7 @@ export function CanvasWorkspace() {
     };
     const up = (event: KeyboardEvent) => { if (event.code === "Space") useSessionStore.getState().setSpaceHeld(false); };
     window.addEventListener("keydown", down); window.addEventListener("keyup", up); return () => { window.removeEventListener("keydown", down); window.removeEventListener("keyup", up); };
-  }, [gesture, ordered, selectedIds, selectedIdSet, guestCanEdit]);
+  }, [gesture, ordered, selectedIds, selectedIdSet, selectedConnectorIds, guestCanEdit]);
 
   useEffect(() => { collaborationController.publishPresence(); }, [selectedIds, activeTool]);
   useEffect(() => { if (collaborationMode === "host" && useCollaborationStore.getState().presenting) collaborationController.publishPresence(); }, [viewport, collaborationMode]);
@@ -173,11 +233,23 @@ export function CanvasWorkspace() {
     window.addEventListener("blur", cancel); return () => window.removeEventListener("blur", cancel);
   }, []);
 
+  // An undo, or deleting an object an edge joins, retires the edge; the selection must not keep pointing at it.
+  useEffect(() => {
+    if (!selectedConnectorIds.length) return;
+    const kept = selectedConnectorIds.filter((id) => board?.connectors[id]);
+    if (kept.length !== selectedConnectorIds.length) useSessionStore.getState().setSelectedConnectors(kept);
+  }, [board, selectedConnectorIds]);
+
   if (!board) return <div className="loading-canvas"><span /><p>Opening your draft…</p></div>;
-  const cursor = spaceHeld || activeTool === "hand" ? "grab" : isShapeTool(activeTool) ? "crosshair" : "default";
-  return <main ref={rootRef} className="canvas-workspace" aria-label="Draftspace infinite canvas" data-tool={activeTool} data-board-ready="true" data-element-count={board.elementIds.length} data-collaboration-readonly={!guestCanEdit || undefined} style={{ cursor }} onPointerDown={onPointerDown} onPointerMove={onPointerMove} onPointerLeave={() => { useSessionStore.getState().setPointerWorld(null); collaborationController.publishPresence({ cursor: null }); }} onPointerUp={finishGesture} onPointerCancel={() => setGesture(null)} onWheel={(event) => { event.preventDefault(); if (followingHost) collaborationController.setFollowingHost(false); markInteraction(ordered.length); const p = localPoint(event); if (classifyWheelGesture(event) === "zoom") useViewportStore.getState().zoomAt(p, viewport.zoom * Math.exp(-event.deltaY * .0015)); else useViewportStore.getState().panBy({ x: -event.deltaX, y: -event.deltaY }); }}>
-    <SceneCanvas board={board} viewport={viewport} elements={renderedElements} width={size.width} height={size.height} draftShape={draftShape} />
-    <InteractionOverlay bounds={selectedBounds} marquee={marquee} snapBounds={snapPreview} viewport={viewport} />
+  const cursor = spaceHeld || activeTool === "hand" ? "grab" : activeTool === "connector" || isShapeTool(activeTool) ? "crosshair" : "default";
+  return <main ref={rootRef} className="canvas-workspace" aria-label="Draftspace infinite canvas" data-tool={activeTool} data-board-ready="true" data-element-count={board.elementIds.length} data-collaboration-readonly={!guestCanEdit || undefined} style={{ cursor }} onPointerDown={onPointerDown} onPointerMove={onPointerMove} onPointerLeave={() => { useSessionStore.getState().setPointerWorld(null); setConnectHover(null); collaborationController.publishPresence({ cursor: null }); }} onPointerUp={finishGesture} onPointerCancel={() => setGesture(null)} onWheel={(event) => { event.preventDefault(); if (followingHost) collaborationController.setFollowingHost(false); markInteraction(ordered.length); const p = localPoint(event); if (classifyWheelGesture(event) === "zoom") useViewportStore.getState().zoomAt(p, viewport.zoom * Math.exp(-event.deltaY * .0015)); else useViewportStore.getState().panBy({ x: -event.deltaX, y: -event.deltaY }); }}>
+    {/* An edge is routed against the boxes its ends are being drawn at, so a connector follows
+        a shape through a move or a resize rather than snapping to it on release. */}
+    <SceneCanvas board={board} viewport={viewport} elements={renderedElements} connectors={renderedConnectors} elementPreview={elementPreview} width={size.width} height={size.height} draftShape={draftShape} />
+    {/* An element's anchors sit exactly where its resize handles do, so the connector tool puts the
+        selection frame away rather than drawing the two on top of each other - and a press near a
+        corner then wires the shape instead of resizing it. */}
+    <InteractionOverlay bounds={connect ? null : selectedBounds} marquee={marquee} snapBounds={snapPreview} connect={connect} connectors={connectorSelection} viewport={viewport} />
     <RemotePresenceOverlay board={board} viewport={viewport} />
     {!board.elementIds.length && !draftShape && <div className="empty-hint"><p>Start with a shape</p><span>Press <kbd>R</kbd>, <kbd>E</kbd>, or <kbd>D</kbd>, then drag anywhere</span></div>}
     <ToolRail /><ViewportControls size={size} />

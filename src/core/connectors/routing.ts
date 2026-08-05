@@ -1,5 +1,5 @@
 import type { BoardDocument } from "@/core/board/types";
-import type { Connector, Point, PortSide } from "@/core/elements/types";
+import type { CanvasElement, Connector, Point, PortSide } from "@/core/elements/types";
 import { portDirection, portPoint, resolveConnectorPorts } from "./ports";
 
 /** How far a connector travels perpendicular to a shape before it may bend. */
@@ -66,10 +66,44 @@ export function routeConnector(fromBounds: { x: number; y: number; width: number
   return simplify([start, exit, ...middle, entry, end]);
 }
 
+/**
+ * The point half way along a routed edge by length, and whether the run it
+ * lands on is horizontal. A label is set there rather than on a bend, so it
+ * stays clear of both objects the edge joins - a two-point route's middle
+ * vertex is its arrowhead, which is the last place a name should be drawn.
+ */
+export function polylineMidpoint(points: readonly Point[]): { point: Point; horizontal: boolean } | null {
+  if (!points.length) return null;
+  if (points.length === 1) return { point: points[0], horizontal: true };
+  const lengths = points.slice(1).map((point, index) => Math.hypot(point.x - points[index].x, point.y - points[index].y));
+  let remaining = lengths.reduce((total, length) => total + length, 0) / 2;
+  for (let index = 0; index < lengths.length; index += 1) {
+    const length = lengths[index];
+    if (remaining > length && index < lengths.length - 1) { remaining -= length; continue; }
+    const from = points[index]; const to = points[index + 1];
+    const fraction = length ? remaining / length : 0;
+    return {
+      point: { x: from.x + (to.x - from.x) * fraction, y: from.y + (to.y - from.y) * fraction },
+      horizontal: Math.abs(to.x - from.x) >= Math.abs(to.y - from.y),
+    };
+  }
+  return { point: points[0], horizontal: true };
+}
+
+/**
+ * The elements a gesture is showing in place of the board's own, keyed by id -
+ * what a move or a resize looks like before it commits. An edge is a statement
+ * about what is joined rather than about where the line runs, so it is routed
+ * against whichever box its ends are being drawn at: with no gesture in flight
+ * that is the stored one, and during a drag it is the previewed one.
+ */
+export type ElementPreview = ReadonlyMap<string, CanvasElement>;
+
 /** Routes a stored connector against the current board; null when an endpoint is gone. */
-export function connectorPolyline(board: Pick<BoardDocument, "elements">, connector: Connector): Point[] | null {
-  const from = board.elements[connector.from.elementId];
-  const to = board.elements[connector.to.elementId];
+export function connectorPolyline(board: Pick<BoardDocument, "elements">, connector: Connector, preview?: ElementPreview | null): Point[] | null {
+  const at = (id: string) => preview?.get(id) ?? board.elements[id];
+  const from = at(connector.from.elementId);
+  const to = at(connector.to.elementId);
   if (!from || !to || from.hidden || to.hidden) return null;
   return routeConnector(from, to, connector);
 }

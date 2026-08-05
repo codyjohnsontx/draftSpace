@@ -1,6 +1,6 @@
 import { create } from "zustand";
 import type { BoardDocument } from "@/core/board/types";
-import type { Bounds, CanvasElement, ConnectorEndpoint, ConnectorKind, ShapeStylePatch, ShapeType } from "@/core/elements/types";
+import type { Bounds, CanvasElement, ConnectorEndpoint, ConnectorKind, ConnectorMutablePatch, ShapeStylePatch, ShapeType } from "@/core/elements/types";
 import { connectorsTouching } from "@/core/connectors/routing";
 import type { Viewport } from "@/core/board/types";
 import { createBoard, createConnector, createShape, newId, now } from "@/core/board/factory";
@@ -23,6 +23,8 @@ type BoardStore = {
   createShape: (type: ShapeType, bounds: Bounds) => string | null;
   createConnector: (from: ConnectorEndpoint, to: ConnectorEndpoint, kind?: ConnectorKind) => string | null;
   deleteConnectors: (ids: string[]) => void;
+  /** Restyles edges as one history entry; `label` names it, so naming an edge does not read as a style change. */
+  updateConnectors: (ids: readonly string[], patch: ConnectorMutablePatch, label?: string, intent?: BoardCommandIntent) => void;
   deleteElements: (ids: string[]) => void;
   duplicateElements: (ids: string[]) => string[];
   pasteElements: (elements: CanvasElement[]) => string[];
@@ -147,6 +149,9 @@ export const useBoardStore = create<BoardStore>((set, get) => ({
     return get().dispatchCommand({ type: "connectors.create", connectors: [connector] }, localCommandMetadata("Connect shapes", "create")) ? connector.id : null;
   },
   deleteConnectors: (ids) => { get().dispatchCommand({ type: "connectors.delete", connectorIds: ids }, localCommandMetadata("Delete connector", "delete")); },
+  updateConnectors: (ids, patch, label = "Change connector style", intent = "style") => {
+    get().dispatchCommand({ type: "connectors.update", updates: ids.map((connectorId) => ({ connectorId, patch })) }, localCommandMetadata(label, intent));
+  },
   deleteElements: (ids) => { get().dispatchCommand({ type: "elements.delete", elementIds: ids }, localCommandMetadata("Delete selection", "delete")); },
   duplicateElements: (ids) => {
     const board = get().board; if (!board) return [];

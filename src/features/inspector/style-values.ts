@@ -1,5 +1,5 @@
-import type { CanvasElement, ShapeStylePatch } from "@/core/elements/types";
-import type { StylePreview } from "@/stores/session-store";
+import type { CanvasElement, Connector, ShapeStylePatch } from "@/core/elements/types";
+import type { ConnectorStylePreview, StylePreview } from "@/stores/session-store";
 
 export type SharedValue<T> =
   | { kind: "value"; value: T }
@@ -37,10 +37,11 @@ export function visibleRecentColors(colors: readonly string[]): string[] {
   return colors.filter((color) => !curated.has(color.toLowerCase()));
 }
 
-export function sharedValue<T>(elements: readonly CanvasElement[], select: (element: CanvasElement) => T): SharedValue<T> {
-  if (!elements.length) return { kind: "unavailable" };
-  const representative = select(elements[0]);
-  return elements.every((element) => Object.is(select(element), representative))
+/** What a group of styled things (elements or edges) agrees on for one property. */
+export function sharedValue<Item, T>(items: readonly Item[], select: (item: Item) => T): SharedValue<T> {
+  if (!items.length) return { kind: "unavailable" };
+  const representative = select(items[0]);
+  return items.every((item) => Object.is(select(item), representative))
     ? { kind: "value", value: representative }
     : { kind: "mixed", representative };
 }
@@ -59,4 +60,9 @@ export function applyStylePatch(element: CanvasElement, patch: ShapeStylePatch):
 export function applyStylePreview(element: CanvasElement, preview: StylePreview | null, previewIds?: ReadonlySet<string>): CanvasElement {
   const applies = preview && (previewIds ? previewIds.has(element.id) : preview.elementIds.includes(element.id));
   return applies ? applyStylePatch(element, preview.patch) : element;
+}
+
+/** An edge as a preview would draw it. Returns the stored edge itself when the preview does not cover it, so an unaffected edge stays referentially stable. */
+export function applyConnectorPreview(connector: Connector, preview: ConnectorStylePreview | null): Connector {
+  return preview?.connectorIds.includes(connector.id) ? { ...connector, ...preview.patch } : connector;
 }

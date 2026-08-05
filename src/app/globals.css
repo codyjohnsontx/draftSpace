@@ -37,6 +37,16 @@ button { color: inherit; }
 .selection-frame + .resize-handle { pointer-events: all; }
 .marquee { fill: rgba(184, 95, 63, .08); stroke: var(--accent); stroke-width: 1; stroke-dasharray: 5 4; }
 .snap-frame { fill: none; stroke: #4f8874; stroke-width: 1.5; stroke-dasharray: 3 4; vector-effect: non-scaling-stroke; animation: snap-in .12s ease both; }
+/* Connector tool: the anchor a press would take, and the edge a drag is about to commit. */
+.connector-draft { fill: none; stroke: var(--accent); stroke-width: 2; stroke-dasharray: 6 5; stroke-linejoin: round; vector-effect: non-scaling-stroke; }
+.connector-port { fill: #fffdfa; stroke: var(--accent); stroke-width: 1.5; }
+.connector-port.active { fill: var(--accent); }
+/* A selected edge wears a halo the width of its own ink plus a margin - a highlighter mark rather than a
+   frame, because anything opaque centered on the route would cover the very line it is pointing at, and
+   a dot on either end would punch a hole in the arrowhead that says which way the edge runs. */
+.connector-selection { fill: none; stroke: var(--accent); stroke-opacity: .46; stroke-linecap: round; stroke-linejoin: round; pointer-events: none; }
+/* The two runs of the halo's mask: the band itself, and the corridor of ink cut back out of it. */
+.halo-band { fill: none; stroke-linecap: round; stroke-linejoin: round; }
 
 .top-bar {
   position: fixed; z-index: 20; top: 14px; left: 16px; right: 16px; height: 48px;
@@ -136,6 +146,19 @@ button { color: inherit; }
 .line-styles button span.dashed { background: repeating-linear-gradient(90deg, currentcolor 0 6px, transparent 6px 9px); }
 .line-styles button span.dotted { background: repeating-linear-gradient(90deg, currentcolor 0 2px, transparent 2px 5px); }
 .range-group { min-width: 174px; }
+/* Which ends of an edge carry a head, drawn as the edge itself: a bare line, one head, the other, or both. */
+.arrow-styles button { width: 38px; }
+.arrow-styles button svg { width: 21px; height: 16px; }
+.arrow-styles button svg .shaft { fill: none; stroke: currentcolor; stroke-width: 1.6; stroke-linecap: round; }
+.arrow-styles button svg .head { fill: currentcolor; stroke: none; }
+/* An edge's own name, written where the rest of its style is set - it has no box to put a caret in. */
+.text-group { min-width: 174px; }
+.label-input {
+  width: 100%; height: 27px; padding: 0 8px; color: var(--ink);
+  border: 1px solid var(--line); border-radius: 7px; background: #fffdf8; font-size: 11px;
+}
+.label-input::placeholder { color: var(--muted); }
+.label-input:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
 .range-group input[type="range"] { width: 100%; height: 18px; accent-color: var(--accent); cursor: pointer; }
 .inspector-empty { padding: 32px 20px; }
 .inspector-empty strong { font-size: 13px; }

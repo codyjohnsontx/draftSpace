@@ -12,12 +12,13 @@ The 100- and 500-element fixtures run once per layout. Each 1,000-element fixtur
 
 - `scene-render`: synchronous Canvas 2D work inside `renderScene`, including background, elements, and draft.
 - `point-hit-test`: the reverse-layer selection scan on pointer-down.
+- `connect-pick`: the reverse-layer anchor scan on every pointer move while the connector tool is armed; hovering empty canvas visits every element.
 - `marquee-select`: the full-containment scan when a marquee commits.
 - `interaction-latency`: the first unrendered pan, zoom, move, or resize input through its corresponding canvas render.
 - `indexeddb-save`: repository update through IndexedDB transaction completion.
 - `board-load`: raw IndexedDB read, migration, Zod validation, and publication as the ready board; Next.js boot is excluded.
 
-Required samples per run are 20 scene renders, 50 point hit tests, 10 marquee selections, 20 interaction latencies, five saves, and one board load. Missing samples fail the suite as broken instrumentation.
+Required samples per run are 20 scene renders, 50 point hit tests, 30 connector-hover picks, 10 marquee selections, 20 interaction latencies, five saves, and one board load. Missing samples fail the suite as broken instrumentation.
 
 ## Targets and guardrails
 
@@ -26,6 +27,7 @@ Required samples per run are 20 scene renders, 50 point hit tests, 10 marquee se
 | All-visible scene render | 32 ms | 100 ms |
 | Distributed scene render | 32 ms | 100 ms |
 | Point hit test | 4 ms | 20 ms |
+| Connector hover pick | 4 ms | 20 ms |
 | Marquee selection | 8 ms | 50 ms |
 | Interaction latency | 50 ms | 150 ms |
 | IndexedDB save | 250 ms | 1,000 ms |

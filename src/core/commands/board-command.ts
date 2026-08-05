@@ -1,7 +1,7 @@
 import type { BoardDocument } from "@/core/board/types";
 import type { CanvasElement, Connector, ConnectorMutablePatch } from "@/core/elements/types";
 import { z } from "zod";
-import { canvasElementSchema, connectorSchema } from "@/schemas/board-schema";
+import { canvasElementSchema, connectorArrowsSchema, connectorSchema } from "@/schemas/board-schema";
 import { newId } from "@/lib/ids/new-id";
 
 export type ElementMutablePatch = Partial<Pick<CanvasElement,
@@ -62,7 +62,7 @@ const mutablePatchSchema = z.strictObject({
 });
 
 const connectorPatchSchema = z.strictObject({
-  kind: z.enum(["sync", "async", "data"]).optional(), label: z.string().max(120).nullable().optional(),
+  kind: z.enum(["sync", "async", "data"]).optional(), arrows: connectorArrowsSchema.optional(), label: z.string().max(120).nullable().optional(),
   strokeColor: z.string().min(1).max(64).optional(), strokeWidth: z.number().positive().finite().optional(), locked: z.boolean().optional(),
 });
 
