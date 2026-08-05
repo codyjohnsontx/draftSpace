@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { createBoard } from "@/core/board/factory";
 import { useBoardStore } from "@/stores/board-store";
 import { copyElements, readElements } from "@/features/clipboard/clipboard";
@@ -99,5 +99,71 @@ describe("copy and paste keep connectors attached", () => {
     useBoardStore.getState().undo();
     expect(board().elementIds).toEqual([seeded.aId, seeded.bId]);
     expect(board().connectorIds).toEqual([seeded.connectorId]);
+  });
+});
+
+describe("the serialized clipboard payload", () => {
+  let seeded: ReturnType<typeof seedConnectedPair>;
+  let clipboardText: string;
+
+  beforeEach(async () => {
+    seeded = seedConnectedPair();
+    clipboardText = "";
+    Object.defineProperty(navigator, "clipboard", {
+      configurable: true,
+      value: { writeText: async (value: string) => { clipboardText = value; }, readText: async () => clipboardText },
+    });
+    // Empties the in-session fallback, so anything a read returns came from the text.
+    await copyElements([], []);
+    clipboardText = "";
+  });
+
+  afterEach(() => { Reflect.deleteProperty(navigator, "clipboard"); });
+
+  const selection = (ids: string[]) => ids.map((id) => board().elements[id]);
+
+  it("reads back the elements and connectors it wrote", async () => {
+    await copyElements(selection([seeded.aId, seeded.bId]), [board().connectors[seeded.connectorId]]);
+    const written = clipboardText;
+    expect(JSON.parse(written)).toMatchObject({ fileFormat: "draftspace/selection" });
+    expect(JSON.parse(written).connectors).toHaveLength(1);
+    await copyElements([], []);
+    clipboardText = written;
+    const payload = await readElements();
+    expect(payload.elements.map((element) => element.id)).toEqual([seeded.aId, seeded.bId]);
+    expect(payload.connectors).toHaveLength(1);
+    expect(useBoardStore.getState().pasteElements(payload)).toHaveLength(2);
+    expect(board().connectorIds).toHaveLength(2);
+  });
+
+  it("still parses an element-only payload written before connectors travelled", async () => {
+    clipboardText = JSON.stringify({ fileFormat: "draftspace/selection", elements: selection([seeded.aId, seeded.bId]) });
+    const payload = await readElements();
+    expect(payload.elements).toHaveLength(2);
+    expect(payload.connectors).toEqual([]);
+    expect(useBoardStore.getState().pasteElements(payload)).toHaveLength(2);
+    expect(board().connectorIds).toEqual([seeded.connectorId]);
+  });
+
+  it("drops entries that fail the board schema and pastes the valid elements", async () => {
+    clipboardText = JSON.stringify({
+      fileFormat: "draftspace/selection",
+      elements: [...selection([seeded.aId, seeded.bId]), { id: "crafted", type: "rectangle" }],
+      connectors: [{ id: "crafted" }],
+    });
+    const payload = await readElements();
+    expect(payload.elements).toHaveLength(2);
+    expect(payload.connectors).toEqual([]);
+    expect(useBoardStore.getState().pasteElements(payload)).toHaveLength(2);
+    expect(board().elementIds).toHaveLength(4);
+    expect(board().connectorIds).toEqual([seeded.connectorId]);
+  });
+
+  it("falls back to the session copy when the clipboard holds foreign text", async () => {
+    await copyElements(selection([seeded.aId]), []);
+    clipboardText = "not a draftspace payload";
+    const payload = await readElements();
+    expect(payload.elements.map((element) => element.id)).toEqual([seeded.aId]);
+    expect(payload.connectors).toEqual([]);
   });
 });
