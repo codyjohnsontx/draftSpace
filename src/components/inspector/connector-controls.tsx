@@ -1,15 +1,12 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, type KeyboardEvent } from "react";
-import type { Connector, ConnectorArrows, ConnectorKind, ConnectorMutablePatch } from "@/core/elements/types";
+import { CONNECTOR_LABEL_MAX_LENGTH, type Connector, type ConnectorArrows, type ConnectorKind, type ConnectorMutablePatch } from "@/core/elements/types";
 import { ColorControl } from "./color-control";
 import { sharedValue } from "@/features/inspector/style-values";
 import { useBoardStore } from "@/stores/board-store";
 import { useSessionStore } from "@/stores/session-store";
 import { useUiPreferencesStore } from "@/stores/ui-preferences-store";
-
-/** How long a name an edge may carry, matching the connector schema's own bound. */
-export const CONNECTOR_LABEL_MAX_LENGTH = 120;
 
 /**
  * What an edge means, which is also how it is drawn: a call that waits, a
