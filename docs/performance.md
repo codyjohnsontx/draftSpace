@@ -47,12 +47,13 @@ Values below are the median of three per-run p95 values for the 1,000-element fi
 |---|---:|---:|---:|---:|
 | Scene render | 0.6 ms | 0.5 ms | 32 ms | 100 ms |
 | Point hit test | 0.1 ms | 0.1 ms | 4 ms | 20 ms |
+| Connector hover pick | not measured | not measured | 4 ms | 20 ms |
 | Marquee selection | 0.1 ms | 0.1 ms | 8 ms | 50 ms |
 | Interaction latency | 1.1 ms | 1.0 ms | 50 ms | 150 ms |
 | IndexedDB save | 4.3 ms | 5.1 ms | 250 ms | 1,000 ms |
 | Board load | 12.5 ms | 12.5 ms | 500 ms | 1,500 ms |
 
-All product targets and CI safety caps passed. The baseline did not trigger viewport culling, requestAnimationFrame coalescing, hit-test allocation work beyond the prescribed simple loop and selection-set reductions, a spatial index, or autosave clone removal. There is therefore no before-and-after optimization comparison for this phase; this table is the preserved pre-optimization baseline.
+Every metric measured at the time passed its product target and CI safety cap. The connector hover pick postdates this baseline: it was added with the Phase 3 connector work and first measured then, at a median-of-three per-run p95 of 3.2 ms all-visible and 2.5 ms distributed on the 1,000-element fixtures, so it has no Phase 1.2B value to compare against. The baseline did not trigger viewport culling, requestAnimationFrame coalescing, hit-test allocation work beyond the prescribed simple loop and selection-set reductions, a spatial index, or autosave clone removal. There is therefore no before-and-after optimization comparison for this phase; this table is the preserved pre-optimization baseline.
 
 ## Local reproduction
 
