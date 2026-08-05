@@ -14,9 +14,9 @@ const mutableConnectorKeys = ["kind", "arrows", "label", "strokeColor", "strokeW
 
 /**
  * Structural equality. Expected values can arrive as decoded JSON (a remote
- * command's snapshot), so identity comparison would never match; item-identity
- * array comparison likewise breaks the moment an array holds objects, and a
- * failed expected-value match makes undo silently do nothing.
+ * command's snapshot), so an object or array field never matches by identity;
+ * item-identity array comparison likewise breaks the moment an array holds
+ * objects, and a failed expected-value match makes undo silently do nothing.
  */
 export function valuesEqual(a: unknown, b: unknown): boolean {
   if (Object.is(a, b)) return true;
