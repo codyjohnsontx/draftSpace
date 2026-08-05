@@ -1,7 +1,7 @@
 import type { BoardDocument } from "@/core/board/types";
-import type { CanvasElement } from "@/core/elements/types";
+import type { CanvasElement, Connector } from "@/core/elements/types";
 
-type JsonSafeDraftspaceData = BoardDocument | CanvasElement | CanvasElement[];
+type JsonSafeDraftspaceData = BoardDocument | CanvasElement | CanvasElement[] | { elements: CanvasElement[]; connectors: Connector[] };
 
 export function cloneBoardData<T extends JsonSafeDraftspaceData>(value: T): T {
   if (typeof globalThis.structuredClone === "function") return globalThis.structuredClone(value);

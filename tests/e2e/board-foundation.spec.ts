@@ -1,5 +1,114 @@
 import { expect, test, type Page } from "@playwright/test";
 
+const CONNECTED_PAIR_STAMP = "2026-07-24T00:00:00.000Z";
+
+/** A saved board holding two rectangles joined by one connector. */
+function connectedPairBoard() {
+  const shape = (id: string, label: string, x: number) => ({
+    id, type: "rectangle", nodeKind: "plain", layer: 0, label, x, y: 100, width: 160, height: 100,
+    rotation: 0, groupIds: [], locked: false, hidden: false, opacity: 1,
+    strokeColor: "#292724", strokeWidth: 2, strokeStyle: "solid",
+    fillColor: "#f4eadf", fillStyle: "solid", roughness: 0, boundTextId: null,
+    createdAt: CONNECTED_PAIR_STAMP, updatedAt: CONNECTED_PAIR_STAMP, cornerRadius: 12,
+  });
+  return {
+    fileFormat: "draftspace/board", schemaVersion: 3, id: "connected-pair", name: "Connected pair",
+    createdAt: CONNECTED_PAIR_STAMP, updatedAt: CONNECTED_PAIR_STAMP, viewport: { x: 0, y: 0, zoom: 1 },
+    preferences: { backgroundPattern: "dots", gridSize: 20, snapToGrid: false, restoreViewport: true },
+    elementIds: ["a", "b"],
+    elements: { a: shape("a", "Box A", 100), b: shape("b", "Box B", 420) },
+    connectorIds: ["edge1"],
+    connectors: { edge1: {
+      id: "edge1", from: { elementId: "a", port: "auto" }, to: { elementId: "b", port: "auto" },
+      kind: "sync", label: null, strokeColor: "#b85f3f", strokeWidth: 2, locked: false,
+      createdAt: CONNECTED_PAIR_STAMP, updatedAt: CONNECTED_PAIR_STAMP,
+    } },
+  };
+}
+
+async function seedConnectedPair(page: Page) {
+  await page.goto("/");
+  await expect(page.getByRole("main", { name: "Draftspace infinite canvas" })).toHaveAttribute("data-board-ready", "true");
+  await page.evaluate(async (doc) => {
+    localStorage.setItem("draftspace:last-board", doc.id as string);
+    await new Promise((resolve, reject) => {
+      const open = indexedDB.open("draftspace");
+      open.onerror = () => reject(open.error);
+      open.onsuccess = () => {
+        const db = open.result;
+        const tx = db.transaction("boards", "readwrite");
+        tx.objectStore("boards").put(doc);
+        tx.oncomplete = () => { db.close(); resolve(null); };
+        tx.onerror = () => reject(tx.error);
+      };
+    });
+  }, connectedPairBoard() as unknown as Record<string, unknown>);
+  await page.reload();
+  await expect(page.getByRole("main", { name: "Draftspace infinite canvas" })).toHaveAttribute("data-element-count", "2");
+}
+
+/** The saved connected-pair document, read back after autosave settles. */
+async function storedConnectedPair(page: Page) {
+  await page.waitForTimeout(800);
+  return page.evaluate(async () => new Promise<{ elementIds: string[]; connectors: Array<{ id: string; from: string; to: string }> }>((resolve, reject) => {
+    const open = indexedDB.open("draftspace");
+    open.onerror = () => reject(open.error);
+    open.onsuccess = () => {
+      const db = open.result;
+      const get = db.transaction("boards").objectStore("boards").get("connected-pair");
+      get.onsuccess = () => {
+        const doc = get.result as { elementIds: string[]; connectorIds: string[]; connectors: Record<string, { id: string; from: { elementId: string }; to: { elementId: string } }> };
+        db.close();
+        resolve({ elementIds: doc.elementIds, connectors: doc.connectorIds.map((id) => ({ id, from: doc.connectors[id].from.elementId, to: doc.connectors[id].to.elementId })) });
+      };
+      get.onerror = () => { db.close(); reject(get.error); };
+    };
+  }));
+}
+
+test("duplicate carries the connector along with the copies", async ({ page }) => {
+  await seedConnectedPair(page);
+  await page.keyboard.press("ControlOrMeta+a");
+  await page.keyboard.press("ControlOrMeta+d");
+  await expect(page.getByRole("main", { name: "Draftspace infinite canvas" })).toHaveAttribute("data-element-count", "4");
+
+  const after = await storedConnectedPair(page);
+  expect(after.elementIds).toHaveLength(4);
+  expect(after.connectors).toHaveLength(2);
+  const copiedIds = after.elementIds.filter((id) => id !== "a" && id !== "b");
+  const copiedConnector = after.connectors.find((connector) => connector.id !== "edge1")!;
+  expect(copiedIds).toContain(copiedConnector.from);
+  expect(copiedIds).toContain(copiedConnector.to);
+
+  await page.keyboard.press("ControlOrMeta+z");
+  await expect(page.getByRole("main", { name: "Draftspace infinite canvas" })).toHaveAttribute("data-element-count", "2");
+  const undone = await storedConnectedPair(page);
+  expect(undone.elementIds).toEqual(["a", "b"]);
+  expect(undone.connectors.map((connector) => connector.id)).toEqual(["edge1"]);
+});
+
+test("copy and paste carry the connector along with the copies", async ({ page }) => {
+  await seedConnectedPair(page);
+  await page.keyboard.press("ControlOrMeta+a");
+  await page.keyboard.press("ControlOrMeta+c");
+  await page.keyboard.press("ControlOrMeta+v");
+  await expect(page.getByRole("main", { name: "Draftspace infinite canvas" })).toHaveAttribute("data-element-count", "4");
+
+  const after = await storedConnectedPair(page);
+  expect(after.elementIds).toHaveLength(4);
+  expect(after.connectors).toHaveLength(2);
+  const copiedIds = after.elementIds.filter((id) => id !== "a" && id !== "b");
+  const copiedConnector = after.connectors.find((connector) => connector.id !== "edge1")!;
+  expect(copiedIds).toContain(copiedConnector.from);
+  expect(copiedIds).toContain(copiedConnector.to);
+
+  await page.keyboard.press("ControlOrMeta+z");
+  await expect(page.getByRole("main", { name: "Draftspace infinite canvas" })).toHaveAttribute("data-element-count", "2");
+  const undone = await storedConnectedPair(page);
+  expect(undone.elementIds).toEqual(["a", "b"]);
+  expect(undone.connectors.map((connector) => connector.id)).toEqual(["edge1"]);
+});
+
 test("explains every toolbar control consistently", async ({ page }, testInfo) => {
   await page.goto("/");
   await expect(page.getByRole("main", { name: "Draftspace infinite canvas" })).toBeVisible();
