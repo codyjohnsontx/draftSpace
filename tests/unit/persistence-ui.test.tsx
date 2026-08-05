@@ -35,6 +35,14 @@ describe("persistence UI", () => {
     usePersistenceStore.setState({ status: "session-only", error: persistenceError("storage-unavailable", "No storage.", true) }); render(<PersistenceStatus controller={controller()} />);
     fireEvent.click(screen.getByRole("button", { name: "Not saving" })); expect(screen.getByRole("button", { name: "Retry storage" })).toBeVisible();
   });
+  it("names the other tab when a session-only draft cannot be saved over it", () => {
+    usePersistenceStore.setState({ status: "session-only", error: persistenceError("board-claimed-elsewhere", "Another tab claimed this board while storage was unavailable.", true) });
+    render(<PersistenceStatus controller={controller()} />);
+    fireEvent.click(screen.getByRole("button", { name: "Not saving" }));
+    expect(screen.getByRole("dialog", { name: "Another tab is editing this board" })).toBeVisible();
+    expect(screen.queryByText(/Local storage is unavailable/)).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Retry storage" })).toBeVisible();
+  });
   it("renders saved state as non-actionable status", () => { render(<PersistenceStatus controller={controller()} />); expect(screen.queryByRole("button", { name: "Saved locally" })).not.toBeInTheDocument(); expect(screen.getByText("Saved locally")).toBeVisible(); });
   it("describes a successful local save while offline", () => { usePersistenceStore.setState({ status: "saved", networkOnline: false }); render(<PersistenceStatus controller={controller()} />); expect(screen.getByText("Saved offline")).toBeVisible(); });
 });

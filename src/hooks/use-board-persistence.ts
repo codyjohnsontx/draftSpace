@@ -9,7 +9,7 @@ import { useViewportStore } from "@/stores/viewport-store";
 import { AutosaveCoordinator, type AutosaveEvent } from "@/features/persistence/autosave-coordinator";
 import { loadBoardDocument } from "@/features/persistence/load-board-document";
 import { downloadBackup, serializeBoardBackup, serializeRecoveryBackup, type BackupResult } from "@/features/persistence/backup";
-import { normalizePersistenceError } from "@/features/persistence/persistence-errors";
+import { normalizePersistenceError, persistenceError } from "@/features/persistence/persistence-errors";
 import { claimBoard, releaseBoardClaim } from "@/features/persistence/board-lease";
 import { setBoardOwnershipProvider } from "@/core/commands/board-command";
 import { performanceNow, recordPerformanceSample } from "@/features/performance/performance-monitor";
@@ -92,7 +92,10 @@ export function useBoardPersistence(): PersistenceController {
     useBoardStore.getState().persistViewport(useViewportStore.getState().viewport);
   }, []);
 
-  /** A board that is already open is left exactly as it is: `setBoard` would drop its history. */
+  /**
+   * A board already on screen is the work this mode exists to keep; only seed one when the
+   * failure struck before anything was opened, since setBoard would drop history and viewport.
+   */
   const enterSessionOnly = useCallback((error: unknown) => {
     // Nothing is written in this mode, so hand the board back rather than hold a lease this tab cannot use.
     releaseBoardClaim(); usePersistenceStore.getState().setBoardAccess("owner");
@@ -117,19 +120,24 @@ export function useBoardPersistence(): PersistenceController {
    */
   const takeOverBoard = useCallback(async (boardId: string) => {
     const persistence = usePersistenceStore.getState();
-    persistence.setBoardAccess("owner");
+    // This tab holds the lock from here on, so every path out of this function has to grant it
+    // edit rights. Granting them only after the stored document is on screen is the point:
+    // an edit accepted against the stale copy would be dropped by the reload that follows it.
     try {
       const result = loadBoardDocument(boardId, await repository.getRawById(boardId));
       if (result.kind === "invalid") {
+        persistence.setBoardAccess("owner");
         persistence.requireRecovery({ boardId: result.boardId, raw: result.raw, detectedAt: new Date().toISOString(), reason: "invalid", issues: result.issues }); return;
       }
       if (result.kind === "unsupported-version") {
+        persistence.setBoardAccess("owner");
         persistence.requireRecovery({ boardId: result.boardId, raw: result.raw, detectedAt: new Date().toISOString(), reason: "unsupported-version", issues: ["This board was created by a newer Draftspace schema."], schemaVersion: result.schemaVersion }); return;
       }
       // The viewport stays where the reader left it; only the document is replaced.
       if (result.kind === "ready") useBoardStore.getState().setBoard(result.board);
       await startCoordinator();
       persistence.markSaved(useBoardStore.getState().revision, new Date().toISOString());
+      persistence.setBoardAccess("owner");
     } catch (error) { console.error("Draftspace could not take over this board", error); enterSessionOnly(error); }
   }, [enterSessionOnly, repository, startCoordinator]);
 
@@ -218,10 +226,13 @@ export function useBoardPersistence(): PersistenceController {
     try {
       await drainCoordinator();
       const board = useBoardStore.getState().board; if (!board) return;
-      // Storage is back, but another tab may have claimed this board meanwhile. Stay temporary
-      // rather than overwrite it; the backup download is still there.
-      const lease = await claim(board.id);
-      if (!lease.isOwner) { usePersistenceStore.getState().setBoardAccess("read-only"); return; }
+      // Storage is back, but another tab may have claimed this board meanwhile. A tab that saves
+      // nothing cannot overwrite that tab, so it keeps its draft and stays editable instead of
+      // taking the lease: freezing it read-only would strand the work and a later promotion
+      // would replace it with the stored document. The backup download is still there.
+      const lease = await claimBoard({ boardId: board.id });
+      if (!lease.isOwner) { enterSessionOnly(persistenceError("board-claimed-elsewhere", "Another tab claimed this board while storage was unavailable.", true)); return; }
+      usePersistenceStore.getState().setBoardAccess("owner");
       const savedRevision = useBoardStore.getState().revision;
       usePersistenceStore.getState().markSaving(savedRevision);
       const existing = await repository.getRawById(board.id);
@@ -233,8 +244,8 @@ export function useBoardPersistence(): PersistenceController {
       usePersistenceStore.getState().markSaved(savedRevision, new Date().toISOString());
       const latestRevision = useBoardStore.getState().revision;
       if (latestRevision > savedRevision) activeCoordinator.schedule(latestRevision);
-    } catch (error) { usePersistenceStore.getState().enterSessionOnly(normalizePersistenceError(error, "write")); }
-  }, [claim, drainCoordinator, repository, startCoordinator]);
+    } catch (error) { enterSessionOnly(normalizePersistenceError(error, "write")); }
+  }, [drainCoordinator, enterSessionOnly, repository, startCoordinator]);
 
   const startNewBoard = useCallback(async () => {
     await drainCoordinator();

@@ -16,6 +16,30 @@ const storedShapePositions = (page: Page) => page.evaluate(async () => new Promi
   };
 }));
 
+/**
+ * Records the board's element count at the first moment the canvas presents itself as
+ * editable. Both attributes live on the same node, so the reading cannot fall between the
+ * document arriving and editing being unlocked: it sees whatever React committed together.
+ */
+async function watchFirstEditableRender(page: Page) {
+  await page.evaluate(() => {
+    const canvas = document.querySelector<HTMLElement>(".canvas-workspace")!;
+    const readCount = () => (canvas.dataset.readonly ? null : Number(canvas.dataset.elementCount));
+    (window as unknown as { editableWith: Promise<number | null> }).editableWith = new Promise((resolve) => {
+      const immediate = readCount();
+      if (immediate !== null) { resolve(immediate); return; }
+      const observer = new MutationObserver(() => {
+        const count = readCount();
+        if (count === null) return;
+        observer.disconnect(); resolve(count);
+      });
+      observer.observe(canvas, { attributes: true, attributeFilter: ["data-readonly", "data-element-count"] });
+    });
+  });
+}
+
+const firstEditableRender = (page: Page) => page.evaluate(() => (window as unknown as { editableWith: Promise<number | null> }).editableWith);
+
 async function openBoard(page: Page) {
   await page.goto("/");
   await expect(page.getByRole("main", { name: "Draftspace infinite canvas" })).toBeVisible();
@@ -71,6 +95,29 @@ test("the surviving tab takes over when the owning tab goes away", async ({ cont
   // It picked up the owner's work rather than writing its own stale copy over it.
   await drawRectangle(reader, 700, 200, 840, 300);
   expect(await storedShapePositions(reader)).toEqual([{ x: 200, y: 200 }, { x: 700, y: 200 }]);
+});
+
+test("a promoted tab has the owner's latest work before it accepts an edit", async ({ context }) => {
+  const owner = await openBoard(await context.newPage());
+  await drawRectangle(owner, 200, 200, 340, 300);
+
+  const reader = await openBoard(await context.newPage());
+  await expect(saveStatus(reader)).toHaveText("View only");
+  const canvas = reader.getByRole("main", { name: "Draftspace infinite canvas" });
+  await expect(canvas).toHaveAttribute("data-element-count", "1");
+
+  // The owner draws again, so the reader's copy is now a shape behind the stored board.
+  await owner.bringToFront();
+  await drawRectangle(owner, 200, 500, 340, 600);
+  await expect(canvas).toHaveAttribute("data-element-count", "1");
+
+  await watchFirstEditableRender(reader);
+  await owner.close();
+
+  // Unlocking editing before the reload landed would show a one-shape board the reader could
+  // draw on, and the reload would then throw that drawing away.
+  expect(await firstEditableRender(reader)).toBe(2);
+  await expect(reader.getByRole("button", { name: "Rectangle" })).toBeEnabled();
 });
 
 test("one tab alone owns its board with no banner and no prompt", async ({ page }) => {

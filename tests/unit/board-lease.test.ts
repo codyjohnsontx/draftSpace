@@ -88,6 +88,27 @@ describe("board lease", () => {
     expect(promoted).toHaveBeenCalledTimes(1);
   });
 
+  it("owns the board for the whole of the promoted tab's reload", async () => {
+    withLocks(fakeLockManager());
+    let ownedWhenReloadStarted: boolean | null = null;
+    let finishReload!: () => void;
+    const reloading = new Promise<void>((resolve) => { finishReload = resolve; });
+    const owner = await BoardLease.acquire({ boardId: "board-1" });
+    const reader: BoardLease = await BoardLease.acquire({
+      boardId: "board-1",
+      // The tab reloads the stored document here before it lets anyone edit, so it has to be
+      // the owner for that whole stretch: no other tab may slip in and start saving over it.
+      onPromoted: () => { ownedWhenReloadStarted = reader.isOwner; return reloading; },
+    });
+
+    owner.release();
+    await vi.waitFor(() => expect(ownedWhenReloadStarted).toBe(true));
+    const latecomer = await BoardLease.acquire({ boardId: "board-1" });
+    expect(latecomer.isOwner).toBe(false);
+
+    latecomer.release(); finishReload();
+  });
+
   it("stops waiting once the reading tab gives the board up", async () => {
     withLocks(fakeLockManager());
     const promoted = vi.fn();

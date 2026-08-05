@@ -22,6 +22,10 @@ export function PersistenceStatus({ controller }: { controller: PersistenceContr
   }, [open]);
 
   const icon = readOnly ? <Eye size={14} /> : status === "failed" ? <CloudOff size={14} /> : status === "session-only" ? <HardDriveDownload size={14} /> : <Cloudy size={14} />;
+  // Nothing is being saved either way, but the two reasons call for different advice.
+  const sessionOnly = error?.code === "board-claimed-elsewhere"
+    ? { dialog: "Another tab is editing this board", title: "This draft stays in this tab", detail: "Another tab is editing this board, so nothing here is saved. Closing this tab loses these changes." }
+    : { dialog: "Local storage unavailable", title: "This draft is temporary", detail: "Local storage is unavailable. Closing this tab may lose your work." };
   if (!actionable) return <span className={`save-status ${status}`} title={label}>{icon}<span>{label}</span></span>;
 
   if (readOnly) return <div className="persistence-status-wrap">
@@ -38,9 +42,9 @@ export function PersistenceStatus({ controller }: { controller: PersistenceContr
 
   return <div className="persistence-status-wrap">
     <button ref={buttonRef} className={`save-status save-status-button ${status}`} aria-expanded={open} aria-haspopup="dialog" onClick={() => setOpen((value) => !value)}>{icon}<span>{label}</span></button>
-    {open && <div className="persistence-panel" role="dialog" aria-label={status === "failed" ? "Save problem" : "Local storage unavailable"}>
-      <strong>{status === "failed" ? "Your work is still open" : "This draft is temporary"}</strong>
-      <p>{status === "failed" ? "Your latest changes are still in this tab." : "Local storage is unavailable. Closing this tab may lose your work."}</p>
+    {open && <div className="persistence-panel" role="dialog" aria-label={status === "failed" ? "Save problem" : sessionOnly.dialog}>
+      <strong>{status === "failed" ? "Your work is still open" : sessionOnly.title}</strong>
+      <p>{status === "failed" ? "Your latest changes are still in this tab." : sessionOnly.detail}</p>
       {error?.message && <small>{error.message}</small>}
       <div className="persistence-actions">
         <button className="compact-primary" onClick={() => { setOpen(false); void (status === "failed" ? controller.retrySave() : controller.retryStorage()); }}><RefreshCw size={14} />{status === "failed" ? "Retry save" : "Retry storage"}</button>
