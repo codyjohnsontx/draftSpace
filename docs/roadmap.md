@@ -8,7 +8,7 @@ This roadmap favors interaction trust over feature count. Draftspace should earn
 - **Desktop pointer workflows are the first quality bar.** Touch editing remains out of scope until mouse and trackpad behavior are dependable.
 - **Local-first is a real product promise.** Recovery, portability, and explicit save state matter more than account or sharing features in the near term.
 - **1,000 ordinary elements is the initial performance target.** Optimization work must be driven by repeatable measurements, not speculative infrastructure.
-- **Connectors are the first major differentiator.** They begin only after core transformations and text editing share stable geometry and history contracts.
+- **Connectors are the first major differentiator.** They begin only after transformations, styling, and history share stable geometry contracts, which Phase 2.1 settled. Text editing is not one of those contracts, so connectors landed ahead of Phase 2.2.
 
 ## Success signals
 
