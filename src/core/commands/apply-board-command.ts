@@ -10,7 +10,7 @@ const mutableElementKeys = [
   "nodeKind", "layer", "label",
 ] as const;
 
-const mutableConnectorKeys = ["kind", "label", "strokeColor", "strokeWidth", "locked"] as const;
+const mutableConnectorKeys = ["kind", "arrows", "label", "strokeColor", "strokeWidth", "locked"] as const;
 
 function valuesEqual(a: unknown, b: unknown): boolean {
   if (Array.isArray(a) && Array.isArray(b)) return a.length === b.length && a.every((value, index) => value === b[index]);
@@ -65,7 +65,7 @@ function applyConnectorPatch(connector: Draft<Connector>, patch: ConnectorMutabl
 function connectorsEqual(a: Connector, b: Connector): boolean {
   return a.id === b.id && a.from.elementId === b.from.elementId && a.from.port === b.from.port
     && a.to.elementId === b.to.elementId && a.to.port === b.to.port
-    && a.kind === b.kind && a.label === b.label && a.strokeColor === b.strokeColor
+    && a.kind === b.kind && a.arrows === b.arrows && a.label === b.label && a.strokeColor === b.strokeColor
     && a.strokeWidth === b.strokeWidth && a.locked === b.locked;
 }
 

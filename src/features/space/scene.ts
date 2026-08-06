@@ -1,6 +1,6 @@
 import * as THREE from "three";
 import type { BoardDocument } from "@/core/board/types";
-import type { CanvasElement, Connector, Point, PortSide } from "@/core/elements/types";
+import { arrowsAtSource, arrowsAtTarget, type CanvasElement, type Connector, type Point, type PortSide } from "@/core/elements/types";
 import { routeConnector } from "@/core/connectors/routing";
 import { disposeObject3D } from "@/features/scene3d/dispose";
 import { createDiagramLabel } from "@/features/scene3d/diagram-label";
@@ -182,7 +182,7 @@ export function createSpaceScene(canvas: HTMLCanvasElement): SpaceScene {
     const fromPosition = elementPosition(from);
     const toPosition = elementPosition(to);
     return [
-      connector.kind, connector.strokeColor, connector.strokeWidth,
+      connector.kind, connector.arrows, connector.strokeColor, connector.strokeWidth,
       connector.from.elementId, connector.from.port, connector.to.elementId, connector.to.port,
       fromPosition.x, fromPosition.y, from.width, from.height, from.layer,
       toPosition.x, toPosition.y, to.width, to.height, to.layer,
@@ -209,14 +209,16 @@ export function createSpaceScene(canvas: HTMLCanvasElement): SpaceScene {
     });
     const mesh = new THREE.Mesh(geometry, material);
     mesh.userData.connectorId = connector.id;
-    // Arrow cone at the destination.
-    const tip = lifted[lifted.length - 1];
-    const previous = lifted[lifted.length - 2];
-    const direction = tip.clone().sub(previous).normalize();
-    const cone = new THREE.Mesh(new THREE.ConeGeometry(0.26, 0.62, 12), material);
-    cone.position.copy(tip).addScaledVector(direction, -0.28);
-    cone.quaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0), direction);
-    mesh.add(cone);
+    // A cone at whichever ends the edge points at, so the 3D board says what the 2D one does.
+    const addCone = (tip: THREE.Vector3, previous: THREE.Vector3) => {
+      const direction = tip.clone().sub(previous).normalize();
+      const cone = new THREE.Mesh(new THREE.ConeGeometry(0.26, 0.62, 12), material);
+      cone.position.copy(tip).addScaledVector(direction, -0.28);
+      cone.quaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0), direction);
+      mesh.add(cone);
+    };
+    if (arrowsAtTarget(connector.arrows)) addCone(lifted[lifted.length - 1], lifted[lifted.length - 2]);
+    if (arrowsAtSource(connector.arrows)) addCone(lifted[0], lifted[1]);
     return mesh;
   }
 

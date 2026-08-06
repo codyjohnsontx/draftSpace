@@ -1,7 +1,7 @@
 import type { BenchmarkElementCount, BenchmarkLayout } from "./benchmark-fixtures";
 import { summarizeSamples } from "./statistics";
 
-export type PerformanceMetricName = "scene-render" | "point-hit-test" | "marquee-select" | "interaction-latency" | "indexeddb-save" | "board-load";
+export type PerformanceMetricName = "scene-render" | "point-hit-test" | "connect-pick" | "marquee-select" | "interaction-latency" | "indexeddb-save" | "board-load";
 export interface PerformanceSample { name: PerformanceMetricName; durationMs: number; elementCount: number; visibleElementCount?: number; timestamp: number }
 export interface PerformanceSummary { name: PerformanceMetricName; sampleCount: number; minimumMs: number; medianMs: number; p95Ms: number; maximumMs: number }
 export interface BenchmarkReport {
@@ -18,7 +18,7 @@ export interface DraftspaceBenchmarkBridge { reset(): void; getReport(): Benchma
 
 declare global { interface Window { __draftspaceBenchmark?: DraftspaceBenchmarkBridge } }
 
-const metricNames: PerformanceMetricName[] = ["scene-render", "point-hit-test", "marquee-select", "interaction-latency", "indexeddb-save", "board-load"];
+const metricNames: PerformanceMetricName[] = ["scene-render", "point-hit-test", "connect-pick", "marquee-select", "interaction-latency", "indexeddb-save", "board-load"];
 const samples = new Map<PerformanceMetricName, PerformanceSample[]>();
 let activeFixture: BenchmarkReport["fixture"] | null = null;
 let pendingInteraction: { startedAt: number; elementCount: number } | null = null;
