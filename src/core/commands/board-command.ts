@@ -16,7 +16,8 @@ export type BoardUpdatePatch = {
 };
 
 export type BoardCommand =
-  // elements.create optionally restores connectors so undoing a cascade delete is one command.
+  // elements.create optionally carries connectors so restoring a cascade delete, duplicating a
+  // connected group, and pasting one each land as a single command.
   | { type: "elements.create"; elements: CanvasElement[]; insertionIndexes?: number[]; connectors?: Connector[]; connectorInsertionIndexes?: number[] }
   // elements.delete cascades to connectors referencing the deleted elements.
   | { type: "elements.delete"; elementIds: string[]; expectedElements?: Record<string, CanvasElement> }

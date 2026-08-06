@@ -30,7 +30,8 @@ type SessionStore = {
   selectedIds: string[];
   /**
    * The edges the selection is holding. A selection holds elements or edges,
-   * never both: an edge cannot be moved, duplicated, or copied, so a mixed
+   * never both: an edge cannot be moved, duplicated, or copied on its own (it
+   * travels only when both of the elements it joins are copied), so a mixed
    * selection would make every one of those mean "do this to the part of the
    * selection it applies to". Taking one kind therefore drops the other.
    */
