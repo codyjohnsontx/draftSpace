@@ -1,0 +1,14 @@
+# Project agent memory
+
+This file is the project's committed home for project-intrinsic agent knowledge: build, test, release, architecture, and sharp-edge notes that should travel with the code.
+
+- Full validation: `npm run typecheck && npm run lint && npm test && npm run build`, then `CI=1 npm run test:e2e` (CI=1 serializes workers; without it the WebGL-heavy landing/space specs starve each other and fail spuriously - see the comment in `playwright.config.ts`), `npm run test:performance`, and `npm run collaboration:test`. E2e and performance boot `next start`, so `npm run build` must run first; override ports with `PLAYWRIGHT_PORT` when 3107/3108 are taken.
+- Driving the canvas with synthetic events (outside Playwright): the workspace commits each gesture to React state on `pointerdown`, so a same-tick down/move/up silently no-ops. Space `PointerEvent`s across ticks (a `requestAnimationFrame` or two between dispatches). Real CDP input does not have this problem.
+- Schema changes: a new field with a correct default costs no schema version - add it to the Zod schema with `.default(...)` and it parses on older stored documents (see "Schema evolution" in `docs/architecture.md`). Bump the version only for changes older documents cannot default their way through, such as new element types.
+
+## Maintaining this file
+
+Keep this file for knowledge useful to almost every future agent session in this project.
+Do not repeat what the codebase already shows; point to the authoritative file or command instead.
+Prefer rewriting or pruning existing entries over appending new ones.
+When updating this file, preserve this bar for all agents and keep entries concise.

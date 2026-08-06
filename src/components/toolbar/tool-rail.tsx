@@ -1,7 +1,7 @@
 "use client";
 
 import { Fragment } from "react";
-import { Circle, Diamond, Hand, LockKeyhole, MousePointer2, Square } from "lucide-react";
+import { Circle, Diamond, Hand, LockKeyhole, MousePointer2, Square, Workflow } from "lucide-react";
 import { useSessionStore, type Tool } from "@/stores/session-store";
 import { Tooltip } from "@/components/ui/tooltip";
 import { useCollaborationStore } from "@/stores/collaboration-store";
@@ -12,6 +12,7 @@ const tools: { id: Tool; label: string; description: string; key: string; icon: 
   { id: "rectangle", label: "Rectangle", description: "Draw a rectangle", key: "R", icon: Square },
   { id: "ellipse", label: "Ellipse", description: "Draw an ellipse", key: "E", icon: Circle },
   { id: "diamond", label: "Diamond", description: "Draw a diamond", key: "D", icon: Diamond },
+  { id: "connector", label: "Connector", description: "Drag from one object to another to join them", key: "C", icon: Workflow },
 ];
 
 export function ToolRail() {

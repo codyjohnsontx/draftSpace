@@ -1,10 +1,11 @@
 "use client";
 
 import { useCallback, useMemo, type KeyboardEvent } from "react";
-import type { CanvasElement, ShapeStylePatch } from "@/core/elements/types";
+import type { CanvasElement, Connector, ShapeStylePatch } from "@/core/elements/types";
 import { ColorControl } from "./color-control";
+import { ConnectorControls } from "./connector-controls";
 import { InspectorModeControls } from "./inspector-mode-controls";
-import { applyStylePreview, sharedValue, visibleRecentColors, type SharedValue } from "@/features/inspector/style-values";
+import { applyConnectorPreview, applyStylePreview, sharedValue, visibleRecentColors, type SharedValue } from "@/features/inspector/style-values";
 import { useBoardStore } from "@/stores/board-store";
 import { useSessionStore } from "@/stores/session-store";
 import { useUiPreferencesStore, type InspectorMode } from "@/stores/ui-preferences-store";
@@ -12,7 +13,8 @@ import { useCollaborationStore } from "@/stores/collaboration-store";
 
 const capitalize = (value: string) => `${value.charAt(0).toUpperCase()}${value.slice(1)}`;
 
-function selectionLabel(elements: readonly CanvasElement[]) {
+function selectionLabel(elements: readonly CanvasElement[], connectors: readonly Connector[]) {
+  if (connectors.length) return connectors.length === 1 ? "Connector" : `${connectors.length} connectors`;
   if (!elements.length) return "No selection";
   if (elements.length === 1) return capitalize(elements[0].type);
   const types = new Set(elements.map((element) => element.type));
@@ -26,12 +28,17 @@ function representative<T>(value: SharedValue<T>, fallback: T): T {
 export function StyleInspector() {
   const board = useBoardStore((state) => state.board);
   const selectedIds = useSessionStore((state) => state.selectedIds);
+  const selectedConnectorIds = useSessionStore((state) => state.selectedConnectorIds);
   const preview = useSessionStore((state) => state.stylePreview);
+  const connectorPreview = useSessionStore((state) => state.connectorStylePreview);
   const hydrated = useUiPreferencesStore((state) => state.hydrated);
   const preferences = useUiPreferencesStore((state) => state.inspector);
   const collaborationMode = useCollaborationStore((state) => state.mode); const collaborationStatus = useCollaborationStore((state) => state.status); const collaborationRole = useCollaborationStore((state) => state.role);
   const readOnly = collaborationMode === "guest" && (collaborationStatus !== "connected" || collaborationRole !== "editor");
   const selected = useMemo(() => board ? selectedIds.map((id) => board.elements[id]).filter((element): element is CanvasElement => Boolean(element)) : [], [board, selectedIds]);
+  // The selection holds elements or edges, never both, so the inspector shows one set of controls or the other.
+  const selectedConnectors = useMemo(() => board ? selectedConnectorIds.map((id) => board.connectors[id]).filter((connector): connector is Connector => Boolean(connector)) : [], [board, selectedConnectorIds]);
+  const displayedConnectors = useMemo(() => connectorPreview ? selectedConnectors.map((connector) => applyConnectorPreview(connector, connectorPreview)) : selectedConnectors, [selectedConnectors, connectorPreview]);
   const previewIds = useMemo(() => new Set(preview?.elementIds ?? []), [preview]);
   const displayed = useMemo(() => preview ? selected.map((element) => applyStylePreview(element, preview, previewIds)) : selected, [selected, preview, previewIds]);
   const rectangles = displayed.filter((element) => element.type === "rectangle");
@@ -61,7 +68,8 @@ export function StyleInspector() {
     useUiPreferencesStore.getState().setInspectorMode(mode);
   }, [finishPreview]);
 
-  if (!hydrated || readOnly || preferences.mode === "hidden" || (preferences.mode === "floating" && !selected.length)) return null;
+  const holding = selected.length + selectedConnectors.length;
+  if (!hydrated || readOnly || preferences.mode === "hidden" || (preferences.mode === "floating" && !holding)) return null;
 
   const fill = sharedValue(displayed, (element) => element.fillColor);
   const stroke = sharedValue(displayed, (element) => element.strokeColor);
@@ -82,10 +90,11 @@ export function StyleInspector() {
 
   return <aside className={`style-inspector ${preferences.mode}`} role={preferences.mode === "floating" ? "toolbar" : "complementary"} aria-label="Style inspector">
     <div className="inspector-header">
-      <div><strong>Style</strong><span>{selectionLabel(selected)}</span></div>
+      <div><strong>Style</strong><span>{selectionLabel(selected, selectedConnectors)}</span></div>
       <InspectorModeControls mode={preferences.mode} onSelect={selectMode} />
     </div>
-    {!selected.length ? <div className="inspector-empty"><strong>Select a shape</strong><p>Select a shape to edit its style.</p></div> : <div className="inspector-controls">
+    {selectedConnectors.length ? <ConnectorControls connectors={displayedConnectors} recentColors={recentColors} />
+      : !selected.length ? <div className="inspector-empty"><strong>Select a shape</strong><p>Select a shape or a connector to edit its style.</p></div> : <div className="inspector-controls">
       <ColorControl label="Fill" value={fill} allowNone recentColors={recentColors} onSelect={(color) => applyStyle({ fillColor: color }, color ?? undefined)} onPreview={(color) => previewStyle({ fillColor: color })} onCommit={(color) => finishPreview(color)} onCancel={cancelPreview} />
       <ColorControl label="Stroke" value={stroke} recentColors={recentColors} onSelect={(color) => color && applyStyle({ strokeColor: color }, color)} onPreview={(color) => previewStyle({ strokeColor: color })} onCommit={(color) => finishPreview(color)} onCancel={cancelPreview} />
       <fieldset className="inspector-group compact-group"><legend>Width{strokeWidth.kind === "mixed" && <span className="mixed-value">Mixed</span>}</legend><div className="segmented-control">

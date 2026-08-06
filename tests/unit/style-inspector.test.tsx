@@ -40,7 +40,7 @@ afterEach(() => {
 describe("style values", () => {
   it("reports shared, mixed, and unavailable values", () => {
     const { rectangle, ellipse } = boardWithShapes();
-    expect(sharedValue([], (element) => element.opacity)).toEqual({ kind: "unavailable" });
+    expect(sharedValue<CanvasElement, number>([], (element) => element.opacity)).toEqual({ kind: "unavailable" });
     expect(sharedValue([rectangle, ellipse], (element) => element.strokeWidth)).toEqual({ kind: "value", value: 2 });
     const changed = { ...ellipse, strokeWidth: 4 };
     expect(sharedValue([rectangle, changed], (element) => element.strokeWidth)).toEqual({ kind: "mixed", representative: 2 });
@@ -133,7 +133,7 @@ describe("StyleInspector", () => {
     useUiPreferencesStore.getState().setInspectorMode("sidebar");
     view.rerender(<StyleInspector />);
     expect(screen.getByRole("complementary", { name: "Style inspector" })).toBeVisible();
-    expect(screen.getByText("Select a shape to edit its style.")).toBeVisible();
+    expect(screen.getByText("Select a shape or a connector to edit its style.")).toBeVisible();
   });
 
   it("shows mixed values, applies a shared value, and exposes button types", () => {

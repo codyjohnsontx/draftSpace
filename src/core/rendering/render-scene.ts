@@ -1,6 +1,6 @@
 import type { BoardDocument, Viewport } from "@/core/board/types";
-import type { Bounds, CanvasElement, Connector, Point, ShapeType } from "@/core/elements/types";
-import { connectorPolyline } from "@/core/connectors/routing";
+import { arrowsAtSource, arrowsAtTarget, type Bounds, type CanvasElement, type Connector, type Point, type ShapeType } from "@/core/elements/types";
+import { connectorPolyline, polylineMidpoint, type ElementPreview } from "@/core/connectors/routing";
 import { shapePath } from "./shape-path";
 
 export interface ShapeDraft { type: ShapeType; bounds: Bounds }
@@ -10,6 +10,10 @@ export interface RenderSceneInput {
   board: BoardDocument;
   viewport: Viewport;
   elements: CanvasElement[];
+  /** The edges to draw, in order. Defaults to the board's own - a style being previewed passes them restyled. */
+  connectors?: readonly Connector[];
+  /** The boxes a gesture is drawing its elements at, so an edge follows a shape while it is moved rather than on release. */
+  elementPreview?: ElementPreview | null;
   canvasSize: { width: number; height: number };
   draftShape: ShapeDraft | null;
 }
@@ -18,8 +22,12 @@ export interface RenderSceneResult { renderedElementCount: number }
 
 const CONNECTOR_DASH: Record<Connector["kind"], number[]> = { sync: [], async: [9, 7], data: [2, 5] };
 
-function drawConnector(context: CanvasRenderingContext2D, board: BoardDocument, connector: Connector): void {
-  const points = connectorPolyline(board, connector);
+/** The board's edges in draw order, which is what a caller that is previewing no edge style gets. */
+export const boardConnectors = (board: Pick<BoardDocument, "connectorIds" | "connectors">): Connector[] =>
+  board.connectorIds.flatMap((id) => board.connectors[id] ? [board.connectors[id]] : []);
+
+function drawConnector(context: CanvasRenderingContext2D, board: BoardDocument, connector: Connector, preview?: ElementPreview | null): void {
+  const points = connectorPolyline(board, connector, preview);
   if (!points || points.length < 2) return;
   context.globalAlpha = 1;
   context.strokeStyle = connector.strokeColor;
@@ -31,20 +39,31 @@ function drawConnector(context: CanvasRenderingContext2D, board: BoardDocument, 
   for (let index = 1; index < points.length; index += 1) context.lineTo(points[index].x, points[index].y);
   context.stroke();
   context.setLineDash([]);
-  drawArrowhead(context, points[points.length - 2], points[points.length - 1], connector.strokeColor);
-  if (connector.label) {
-    const middle = points[Math.floor(points.length / 2)];
+  // A head is drawn at whichever ends the edge says it points at, aimed along the route's own run into that end.
+  if (arrowsAtTarget(connector.arrows)) drawArrowhead(context, points[points.length - 2], points[points.length - 1], connector.strokeColor, connector.strokeWidth);
+  if (arrowsAtSource(connector.arrows)) drawArrowhead(context, points[1], points[0], connector.strokeColor, connector.strokeWidth);
+  const named = connector.label ? polylineMidpoint(points) : null;
+  if (connector.label && named) {
+    // A name sits off the line rather than on it: above a horizontal run, beside a vertical one.
+    const offset = connector.strokeWidth / 2 + 4;
     context.fillStyle = "#6b6459";
     context.font = "600 11px system-ui, sans-serif";
-    context.textAlign = "center";
-    context.textBaseline = "bottom";
-    context.fillText(connector.label, middle.x, middle.y - 4);
+    context.textAlign = named.horizontal ? "center" : "left";
+    context.textBaseline = named.horizontal ? "bottom" : "middle";
+    context.fillText(connector.label, named.point.x + (named.horizontal ? 0 : offset), named.point.y - (named.horizontal ? offset : 0));
   }
 }
 
-function drawArrowhead(context: CanvasRenderingContext2D, fromPoint: Point, tip: Point, color: string): void {
+/**
+ * How long an edge's head is along the line, in board units. A head has to grow
+ * with the ink it caps or a wide edge ends in a barb narrower than itself; the
+ * default 2-unit edge keeps the 9 units every arrowhead has always been drawn at.
+ */
+export const arrowheadSize = (strokeWidth: number): number => 6 + strokeWidth * 1.5;
+
+function drawArrowhead(context: CanvasRenderingContext2D, fromPoint: Point, tip: Point, color: string, strokeWidth: number): void {
   const angle = Math.atan2(tip.y - fromPoint.y, tip.x - fromPoint.x);
-  const size = 9;
+  const size = arrowheadSize(strokeWidth);
   context.fillStyle = color;
   context.beginPath();
   context.moveTo(tip.x, tip.y);
@@ -54,7 +73,7 @@ function drawArrowhead(context: CanvasRenderingContext2D, fromPoint: Point, tip:
   context.fill();
 }
 
-export function renderScene({ context, board, viewport, elements, canvasSize, draftShape }: RenderSceneInput): RenderSceneResult {
+export function renderScene({ context, board, viewport, elements, connectors, elementPreview = null, canvasSize, draftShape }: RenderSceneInput): RenderSceneResult {
   const { width, height } = canvasSize;
   context.clearRect(0, 0, width, height);
   context.fillStyle = "#f7f4ed";
@@ -87,10 +106,7 @@ export function renderScene({ context, board, viewport, elements, canvasSize, dr
   context.save();
   context.translate(viewport.x, viewport.y);
   context.scale(viewport.zoom, viewport.zoom);
-  for (const connectorId of board.connectorIds) {
-    const connector = board.connectors[connectorId];
-    if (connector) drawConnector(context, board, connector);
-  }
+  for (const connector of connectors ?? boardConnectors(board)) drawConnector(context, board, connector, elementPreview);
   let renderedElementCount = 0;
   for (const element of elements) {
     if (element.hidden) continue;

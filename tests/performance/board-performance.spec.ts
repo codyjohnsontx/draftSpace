@@ -6,11 +6,11 @@ import type { BenchmarkReport, PerformanceMetricName, PerformanceSummary } from 
 import { seedBenchmarkBoard } from "./helpers/seed-benchmark-board";
 
 const requiredSamples: Record<PerformanceMetricName, number> = {
-  "scene-render": 20, "point-hit-test": 50, "marquee-select": 10,
+  "scene-render": 20, "point-hit-test": 50, "connect-pick": 30, "marquee-select": 10,
   "interaction-latency": 20, "indexeddb-save": 5, "board-load": 1,
 };
 const safetyCaps: Record<PerformanceMetricName, number> = {
-  "scene-render": 100, "point-hit-test": 20, "marquee-select": 50,
+  "scene-render": 100, "point-hit-test": 20, "connect-pick": 20, "marquee-select": 50,
   "interaction-latency": 150, "indexeddb-save": 1000, "board-load": 1500,
 };
 
@@ -60,6 +60,16 @@ async function runFixture(page: Page, testInfo: TestInfo, options: BenchmarkFixt
     await page.keyboard.press(index % 2 ? "ArrowLeft" : "ArrowRight");
     await page.waitForTimeout(650);
   }
+
+  // The armed connector tool picks an anchor on every pointer move. Sweep across the content and
+  // then along empty canvas, where the pick scans every element before giving up - the worst case.
+  await page.keyboard.press("c");
+  await expect(page.locator('[data-tool="connector"]')).toBeVisible();
+  await page.mouse.move(60, 60);
+  await page.mouse.move(1240, 680, { steps: 25 });
+  await page.mouse.move(1240, 60, { steps: 10 });
+  await page.mouse.move(60, 680, { steps: 25 });
+  await page.keyboard.press("v");
 
   const collected = replaceSummary(await report(page), loadSummary);
   for (const [name, minimum] of Object.entries(requiredSamples) as [PerformanceMetricName, number][]) {

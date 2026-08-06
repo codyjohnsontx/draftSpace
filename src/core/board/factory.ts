@@ -1,5 +1,5 @@
 import type { BoardDocument } from "./types";
-import type { BaseShapeElement, Bounds, CanvasElement, Connector, ConnectorEndpoint, ConnectorKind, NodeKind, RectangleElement, ShapeType } from "@/core/elements/types";
+import { DEFAULT_CONNECTOR_ARROWS, type BaseShapeElement, type Bounds, type CanvasElement, type Connector, type ConnectorArrows, type ConnectorEndpoint, type ConnectorKind, type NodeKind, type RectangleElement, type ShapeType } from "@/core/elements/types";
 import { newId } from "@/lib/ids/new-id";
 
 export const now = () => new Date().toISOString();
@@ -52,13 +52,14 @@ export function createShape(type: ShapeType, bounds: Bounds, options: { nodeKind
 
 export const createRectangle = (bounds: Bounds): RectangleElement => createShape("rectangle", bounds) as RectangleElement;
 
-export function createConnector(from: ConnectorEndpoint, to: ConnectorEndpoint, options: { kind?: ConnectorKind; label?: string | null } = {}): Connector {
+export function createConnector(from: ConnectorEndpoint, to: ConnectorEndpoint, options: { kind?: ConnectorKind; arrows?: ConnectorArrows; label?: string | null } = {}): Connector {
   const timestamp = now();
   return {
     id: newId(),
     from,
     to,
     kind: options.kind ?? "sync",
+    arrows: options.arrows ?? DEFAULT_CONNECTOR_ARROWS,
     label: options.label ?? null,
     strokeColor: "#b85f3f",
     strokeWidth: 2,

@@ -55,6 +55,13 @@ export type PortSide = "n" | "e" | "s" | "w";
 export type ConnectorPort = PortSide | "auto";
 export type ConnectorEndpoint = { elementId: ElementId; port: ConnectorPort };
 export type ConnectorKind = "sync" | "async" | "data";
+/** Which ends of an edge carry a head, named for the ends of the binding rather than for a direction on screen. */
+export type ConnectorArrows = "none" | "end" | "start" | "both";
+/** A new edge points at what it was dragged to, which is also how every edge drawn before this was drawn. */
+export const DEFAULT_CONNECTOR_ARROWS: ConnectorArrows = "end";
+/** Where an edge's heads go, defined once so the canvas and the 3D board cannot disagree about what it points at. */
+export const arrowsAtSource = (arrows: ConnectorArrows): boolean => arrows === "start" || arrows === "both";
+export const arrowsAtTarget = (arrows: ConnectorArrows): boolean => arrows === "end" || arrows === "both";
 
 /** An edge between two shapes. Lives beside elements on the board, not inside the CanvasElement union. */
 export type Connector = {
@@ -62,6 +69,7 @@ export type Connector = {
   from: ConnectorEndpoint;
   to: ConnectorEndpoint;
   kind: ConnectorKind;
+  arrows: ConnectorArrows;
   label: string | null;
   strokeColor: string;
   strokeWidth: number;
@@ -70,4 +78,4 @@ export type Connector = {
   updatedAt: string;
 };
 
-export type ConnectorMutablePatch = Partial<Pick<Connector, "kind" | "label" | "strokeColor" | "strokeWidth" | "locked">>;
+export type ConnectorMutablePatch = Partial<Pick<Connector, "kind" | "arrows" | "label" | "strokeColor" | "strokeWidth" | "locked">>;
