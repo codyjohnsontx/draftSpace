@@ -159,6 +159,23 @@ describe("the serialized clipboard payload", () => {
     expect(board().connectorIds).toEqual([seeded.connectorId]);
   });
 
+  it("keeps only the first entry when an id repeats in the payload", async () => {
+    const [elementA, elementB] = selection([seeded.aId, seeded.bId]);
+    const edge = board().connectors[seeded.connectorId];
+    clipboardText = JSON.stringify({
+      fileFormat: "draftspace/selection",
+      elements: [elementA, { ...elementA, label: "impostor" }, elementB],
+      connectors: [edge, { ...edge }],
+    });
+    const payload = await readElements();
+    expect(payload.elements.map((element) => element.id)).toEqual([seeded.aId, seeded.bId]);
+    expect(payload.connectors).toHaveLength(1);
+    const pasted = useBoardStore.getState().pasteElements(payload);
+    expect(pasted).toHaveLength(2);
+    expect(board().elementIds).toHaveLength(4);
+    expect(board().connectorIds).toHaveLength(2);
+  });
+
   it("falls back to the session copy when the clipboard holds foreign text", async () => {
     await copyElements(selection([seeded.aId]), []);
     clipboardText = "not a draftspace payload";

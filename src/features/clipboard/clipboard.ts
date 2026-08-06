@@ -15,14 +15,23 @@ function parseSelection(value: unknown): SelectionCopy | null {
   if (typeof value !== "object" || value === null) return null;
   const payload = value as { fileFormat?: unknown; elements?: unknown; connectors?: unknown };
   if (payload.fileFormat !== MIME || !Array.isArray(payload.elements)) return null;
+  // A repeated id keeps its first entry only: copySelection mints one fresh id
+  // per source id, so a later duplicate would alias the same copy and make the
+  // paste report more items than the board gains.
+  const seenElementIds = new Set<string>();
   const elements = payload.elements.flatMap((entry) => {
     const parsed = canvasElementSchema.safeParse(entry);
-    return parsed.success ? [parsed.data] : [];
+    if (!parsed.success || seenElementIds.has(parsed.data.id)) return [];
+    seenElementIds.add(parsed.data.id);
+    return [parsed.data];
   });
   // Payloads written before connectors travelled on the clipboard carry elements only.
+  const seenConnectorIds = new Set<string>();
   const connectors = Array.isArray(payload.connectors) ? payload.connectors.flatMap((entry) => {
     const parsed = connectorSchema.safeParse(entry);
-    return parsed.success ? [parsed.data] : [];
+    if (!parsed.success || seenConnectorIds.has(parsed.data.id)) return [];
+    seenConnectorIds.add(parsed.data.id);
+    return [parsed.data];
   }) : [];
   return { elements, connectors };
 }
