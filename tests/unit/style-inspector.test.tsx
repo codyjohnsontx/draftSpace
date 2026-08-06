@@ -133,6 +133,8 @@ describe("StyleInspector", () => {
     useUiPreferencesStore.getState().setInspectorMode("sidebar");
     view.rerender(<StyleInspector />);
     expect(screen.getByRole("complementary", { name: "Style inspector" })).toBeVisible();
+    // The heading names both of the things the body invites, since an edge is stylable here too.
+    expect(screen.getByText("Select a shape or a connector")).toBeVisible();
     expect(screen.getByText("Select a shape or a connector to edit its style.")).toBeVisible();
   });
 

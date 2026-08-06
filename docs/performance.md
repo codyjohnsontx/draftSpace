@@ -53,7 +53,11 @@ Values below are the median of three per-run p95 values for the 1,000-element fi
 | IndexedDB save | 4.3 ms | 5.1 ms | 250 ms | 1,000 ms |
 | Board load | 12.5 ms | 12.5 ms | 500 ms | 1,500 ms |
 
-Every metric measured at the time passed its product target and CI safety cap. The connector hover pick postdates this baseline: it was added with the Phase 3 connector work and first measured then, at a median-of-three per-run p95 of 3.2 ms all-visible and 2.5 ms distributed on the 1,000-element fixtures, so it has no Phase 1.2B value to compare against. The baseline did not trigger viewport culling, requestAnimationFrame coalescing, hit-test allocation work beyond the prescribed simple loop and selection-set reductions, a spatial index, or autosave clone removal. There is therefore no before-and-after optimization comparison for this phase; this table is the preserved pre-optimization baseline.
+Every metric measured at the time passed its product target and CI safety cap. The connector hover pick postdates this baseline: it was added with the Phase 3 connector work and first measured then, so it has no Phase 1.2B value to compare against. Measured by the documented `npm run test:performance` method on the reference machine named above, with nothing else loading it, the current allocation-free pick reports a median-of-three per-run p95 of 0.10 ms all-visible and 0.10 ms distributed on the 1,000-element fixtures. Restoring the previous allocating scan and re-measuring under the same quiet conditions gives 0.30 ms all-visible and 0.60 ms distributed, so removing the per-candidate allocations is worth roughly 3x to 6x on this workload, not the order of magnitude a naive comparison with the superseded figure would suggest.
+
+An earlier revision of this section recorded 3.2 ms all-visible and 2.5 ms distributed for the same metric. That run shared the machine with several other agents, so it measured contention rather than the code, and the quiet-machine numbers above replace it. Treat the older figure as withdrawn rather than as a regression to restore.
+
+The baseline did not trigger viewport culling, requestAnimationFrame coalescing, hit-test allocation work beyond the prescribed simple loop and selection-set reductions, a spatial index, or autosave clone removal. There is therefore no before-and-after optimization comparison for this phase; this table is the preserved pre-optimization baseline.
 
 ## Local reproduction
 

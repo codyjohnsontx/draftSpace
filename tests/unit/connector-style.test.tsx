@@ -3,6 +3,8 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { createBoard } from "@/core/board/factory";
 import type { BoardDocument } from "@/core/board/types";
 import { parseBoardCommand } from "@/core/commands/board-command";
+import { CONNECTOR_LABEL_MAX_LENGTH } from "@/core/elements/types";
+import { connectorSchema } from "@/schemas/board-schema";
 import { connectorPolyline, polylineMidpoint } from "@/core/connectors/routing";
 import { renderScene } from "@/core/rendering/render-scene";
 import { StyleInspector } from "@/components/inspector/style-inspector";
@@ -233,6 +235,19 @@ describe("the inspector with edges held", () => {
     fireEvent.blur(cleared);
     // An edge with nothing written on it carries no name at all, so nothing is drawn on its route.
     expect(edge(firstId).label).toBeNull();
+  });
+
+  it("bounds a name at one length in the field, the command, and the stored document", () => {
+    const { firstId, edge } = wiredBoard();
+    showInspector([firstId]);
+    const field = screen.getByLabelText("Connector label") as HTMLInputElement;
+    expect(field.maxLength).toBe(CONNECTOR_LABEL_MAX_LENGTH);
+    const longest = "x".repeat(CONNECTOR_LABEL_MAX_LENGTH);
+    const patch = (label: string) => ({ type: "connectors.update", updates: [{ connectorId: firstId, patch: { label } }] });
+    expect(parseBoardCommand(patch(longest))).not.toBeNull();
+    expect(parseBoardCommand(patch(`${longest}x`))).toBeNull();
+    expect(connectorSchema.safeParse({ ...edge(firstId), label: longest }).success).toBe(true);
+    expect(connectorSchema.safeParse({ ...edge(firstId), label: `${longest}x` }).success).toBe(false);
   });
 
   it("shows the color being tried out without writing it to the board until it is committed", () => {
