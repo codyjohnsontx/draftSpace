@@ -210,7 +210,7 @@ export function CanvasWorkspace() {
         if (selectedConnectorIds.length) { useBoardStore.getState().deleteConnectors(selectedConnectorIds); useSessionStore.getState().setSelectedConnectors([]); }
         else { useBoardStore.getState().deleteElements(selectedIds); useSessionStore.getState().setSelected([]); }
       }
-      else if (mod && key === "d" && guestCanEdit) { event.preventDefault(); if (selectedIds.length) useSessionStore.getState().setSelected(useBoardStore.getState().duplicateElements(selectedIds)); }
+      else if (mod && key === "d" && guestCanEdit) { event.preventDefault(); if (selectedIds.length) { const copies = useBoardStore.getState().duplicateElements(selectedIds); if (copies.length) useSessionStore.getState().setSelected(copies); } }
       else if (mod && key === "a") { event.preventDefault(); useSessionStore.getState().setSelected(ordered.filter((e) => !e.locked && !e.hidden).map((e) => e.id)); }
       else if (mod && key === "c" && selectedIds.length) { event.preventDefault(); await copyElements(ordered.filter((e) => selectedIdSet.has(e.id))); }
       else if (mod && key === "x" && selectedIds.length && guestCanEdit) { event.preventDefault(); const elements = ordered.filter((e) => selectedIdSet.has(e.id)); await copyElements(elements); useBoardStore.getState().deleteElements(selectedIds); useSessionStore.getState().setSelected([]); }
