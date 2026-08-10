@@ -1,6 +1,7 @@
 import { afterEach, describe, expect, it } from "vitest";
 import { createBoard, createShape } from "@/core/board/factory";
 import { parseBoardCommand, setLocalActorIdProvider, setLocalCommandAuthorizationProvider, type BoardCommandMetadata } from "@/core/commands/board-command";
+import { valuesEqual } from "@/core/commands/apply-board-command";
 import { useBoardStore } from "@/stores/board-store";
 
 const metadata = (actorId: string, commandId: string): BoardCommandMetadata => ({ actorId, commandId, label: "Move", intent: "move" });
@@ -54,5 +55,27 @@ describe("board commands", () => {
 
     useBoardStore.getState().dispatchCommand({ type: "elements.update", updates: [{ elementId: element.id, patch: { width: 120 } }] }, metadata("bob", "bob-resize"), "remote");
     expect(useBoardStore.getState().history.redo.some((entry) => entry.metadata?.actorId === "alice")).toBe(true);
+  });
+});
+
+describe("valuesEqual", () => {
+  it("compares arrays of objects structurally, not by item identity", () => {
+    expect(valuesEqual([{ x: 1, y: 2 }, { x: 3, y: 4 }], [{ x: 1, y: 2 }, { x: 3, y: 4 }])).toBe(true);
+    expect(valuesEqual([{ x: 1, y: 2 }], [{ x: 1, y: 5 }])).toBe(false);
+  });
+
+  it("matches an expected value that arrived as decoded JSON", () => {
+    const value = { nested: { items: [{ id: "a", tags: ["x"] }], count: 2 } };
+    expect(valuesEqual(value, JSON.parse(JSON.stringify(value)))).toBe(true);
+  });
+
+  it("still distinguishes primitives, mismatched shapes, and null", () => {
+    expect(valuesEqual(["a", "b"], ["a", "b"])).toBe(true);
+    expect(valuesEqual(["a", "b"], ["a", "c"])).toBe(false);
+    expect(valuesEqual([1, 2], [1, 2, 3])).toBe(false);
+    expect(valuesEqual({ a: 1 }, { a: 1, b: 2 })).toBe(false);
+    expect(valuesEqual({ a: 1 }, [1])).toBe(false);
+    expect(valuesEqual(null, {})).toBe(false);
+    expect(valuesEqual(NaN, NaN)).toBe(true);
   });
 });

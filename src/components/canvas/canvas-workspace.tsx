@@ -12,6 +12,7 @@ import { resizedBounds, scaleElements } from "@/core/geometry/resize";
 import { snapBoundsToGrid, snappedMoveDelta } from "@/core/geometry/snapping";
 import { classifyWheelGesture } from "@/core/interaction/wheel";
 import { copyElements, readElements } from "@/features/clipboard/clipboard";
+import { connectorsWithin } from "@/core/board/duplicate";
 import { useBoardStore } from "@/stores/board-store";
 import { useSessionStore, type ResizeHandle } from "@/stores/session-store";
 import { useViewportStore } from "@/stores/viewport-store";
@@ -212,8 +213,8 @@ export function CanvasWorkspace() {
       }
       else if (mod && key === "d" && guestCanEdit) { event.preventDefault(); useSessionStore.getState().setSelected(useBoardStore.getState().duplicateElements(selectedIds)); }
       else if (mod && key === "a") { event.preventDefault(); useSessionStore.getState().setSelected(ordered.filter((e) => !e.locked && !e.hidden).map((e) => e.id)); }
-      else if (mod && key === "c" && selectedIds.length) { event.preventDefault(); await copyElements(ordered.filter((e) => selectedIdSet.has(e.id))); }
-      else if (mod && key === "x" && selectedIds.length && guestCanEdit) { event.preventDefault(); const elements = ordered.filter((e) => selectedIdSet.has(e.id)); await copyElements(elements); useBoardStore.getState().deleteElements(selectedIds); useSessionStore.getState().setSelected([]); }
+      else if (mod && key === "c" && selectedIds.length) { event.preventDefault(); const current = useBoardStore.getState().board; await copyElements(ordered.filter((e) => selectedIdSet.has(e.id)), current ? connectorsWithin(current, selectedIdSet) : []); }
+      else if (mod && key === "x" && selectedIds.length && guestCanEdit) { event.preventDefault(); const current = useBoardStore.getState().board; const elements = ordered.filter((e) => selectedIdSet.has(e.id)); await copyElements(elements, current ? connectorsWithin(current, selectedIdSet) : []); useBoardStore.getState().deleteElements(selectedIds); useSessionStore.getState().setSelected([]); }
       else if (mod && key === "v" && guestCanEdit) { event.preventDefault(); useSessionStore.getState().setSelected(useBoardStore.getState().pasteElements(await readElements())); }
       else if (["ArrowUp", "ArrowDown", "ArrowLeft", "ArrowRight"].includes(event.key) && selectedIds.length && guestCanEdit) {
         event.preventDefault(); const amount = event.shiftKey ? 10 : 1; const dx = event.key === "ArrowLeft" ? -amount : event.key === "ArrowRight" ? amount : 0; const dy = event.key === "ArrowUp" ? -amount : event.key === "ArrowDown" ? amount : 0;
