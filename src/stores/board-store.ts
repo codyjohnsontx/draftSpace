@@ -1,9 +1,10 @@
 import { create } from "zustand";
 import type { BoardDocument } from "@/core/board/types";
-import type { Bounds, CanvasElement, ConnectorEndpoint, ConnectorKind, ConnectorMutablePatch, ShapeStylePatch, ShapeType } from "@/core/elements/types";
+import type { Bounds, ConnectorEndpoint, ConnectorKind, ConnectorMutablePatch, ShapeStylePatch, ShapeType } from "@/core/elements/types";
 import { connectorsTouching } from "@/core/connectors/routing";
 import type { Viewport } from "@/core/board/types";
-import { createBoard, createConnector, createShape, newId, now } from "@/core/board/factory";
+import { createBoard, createConnector, createShape, now } from "@/core/board/factory";
+import { connectorsWithin, copySelection, type SelectionCopy } from "@/core/board/duplicate";
 import { emptyHistory, transact, type HistoryEntry, type HistoryState } from "@/features/history/history";
 import { applyBoardCommand } from "@/core/commands/apply-board-command";
 import { canDispatchLocalCommands, getLocalActorId, localCommandMetadata, type BoardCommand, type BoardCommandIntent, type BoardCommandMetadata, type BoardUpdatePatch, type ElementMutablePatch } from "@/core/commands/board-command";
@@ -27,7 +28,7 @@ type BoardStore = {
   updateConnectors: (ids: readonly string[], patch: ConnectorMutablePatch, label?: string, intent?: BoardCommandIntent) => void;
   deleteElements: (ids: string[]) => void;
   duplicateElements: (ids: string[]) => string[];
-  pasteElements: (elements: CanvasElement[]) => string[];
+  pasteElements: (payload: SelectionCopy) => string[];
   applyElementStyles: (ids: readonly string[], patch: ShapeStylePatch, label?: string) => void;
   updateElements: (updates: Array<{ elementId: string; patch: ElementMutablePatch }>, label: string, intent: BoardCommandIntent) => void;
   updateBoard: (patch: Extract<BoardCommand, { type: "board.update" }>["patch"], label: string) => void;
@@ -155,12 +156,13 @@ export const useBoardStore = create<BoardStore>((set, get) => ({
   deleteElements: (ids) => { get().dispatchCommand({ type: "elements.delete", elementIds: ids }, localCommandMetadata("Delete selection", "delete")); },
   duplicateElements: (ids) => {
     const board = get().board; if (!board) return [];
-    const copies = ids.map((id) => board.elements[id]).filter(Boolean).map((source) => ({ ...source, id: newId(), x: source.x + 20, y: source.y + 20, createdAt: now(), updatedAt: now() }));
-    return get().dispatchCommand({ type: "elements.create", elements: copies }, localCommandMetadata("Duplicate selection", "duplicate")) ? copies.map((copy) => copy.id) : [];
+    const sources = ids.map((id) => board.elements[id]).filter(Boolean);
+    const copy = copySelection(sources, connectorsWithin(board, new Set(sources.map((source) => source.id))), now());
+    return get().dispatchCommand({ type: "elements.create", elements: copy.elements, ...(copy.connectors.length ? { connectors: copy.connectors } : {}) }, localCommandMetadata("Duplicate selection", "duplicate")) ? copy.elements.map((element) => element.id) : [];
   },
-  pasteElements: (elements) => {
-    const copies = elements.map((source) => ({ ...source, id: newId(), x: source.x + 20, y: source.y + 20, createdAt: now(), updatedAt: now() }));
-    return get().dispatchCommand({ type: "elements.create", elements: copies }, localCommandMetadata("Paste", "paste")) ? copies.map((copy) => copy.id) : [];
+  pasteElements: ({ elements, connectors }) => {
+    const copy = copySelection(elements, connectors, now());
+    return get().dispatchCommand({ type: "elements.create", elements: copy.elements, ...(copy.connectors.length ? { connectors: copy.connectors } : {}) }, localCommandMetadata("Paste", "paste")) ? copy.elements.map((element) => element.id) : [];
   },
   applyElementStyles: (ids, patch, label = "Change shape style") => {
     get().updateElements(ids.map((elementId) => ({ elementId, patch })), label, "style");

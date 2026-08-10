@@ -12,9 +12,24 @@ const mutableElementKeys = [
 
 const mutableConnectorKeys = ["kind", "arrows", "label", "strokeColor", "strokeWidth", "locked"] as const;
 
-function valuesEqual(a: unknown, b: unknown): boolean {
-  if (Array.isArray(a) && Array.isArray(b)) return a.length === b.length && a.every((value, index) => value === b[index]);
-  return Object.is(a, b);
+/**
+ * Structural equality. Expected values can arrive as decoded JSON (a remote
+ * command's snapshot), so an object or array field never matches by identity;
+ * item-identity array comparison likewise breaks the moment an array holds
+ * objects, and a failed expected-value match makes undo silently do nothing.
+ */
+export function valuesEqual(a: unknown, b: unknown): boolean {
+  if (Object.is(a, b)) return true;
+  if (Array.isArray(a) || Array.isArray(b)) {
+    return Array.isArray(a) && Array.isArray(b) && a.length === b.length && a.every((value, index) => valuesEqual(value, b[index]));
+  }
+  if (typeof a === "object" && typeof b === "object" && a !== null && b !== null) {
+    const aRecord = a as Record<string, unknown>;
+    const bRecord = b as Record<string, unknown>;
+    const keys = Object.keys(aRecord);
+    return keys.length === Object.keys(bRecord).length && keys.every((key) => valuesEqual(aRecord[key], bRecord[key]));
+  }
+  return false;
 }
 
 function applyElementPatch(element: Draft<CanvasElement>, patch: ElementMutablePatch, expected?: ElementMutablePatch): boolean {
