@@ -211,6 +211,7 @@ export function CanvasWorkspace() {
         if (selectedConnectorIds.length) { useBoardStore.getState().deleteConnectors(selectedConnectorIds); useSessionStore.getState().setSelectedConnectors([]); }
         else { useBoardStore.getState().deleteElements(selectedIds); useSessionStore.getState().setSelected([]); }
       }
+      // No copies means no duplicate happened - no open board, or a refused command - so the selection the user still has stands.
       else if (mod && key === "d" && guestCanEdit) { event.preventDefault(); if (selectedIds.length) { const copies = useBoardStore.getState().duplicateElements(selectedIds); if (copies.length) useSessionStore.getState().setSelected(copies); } }
       else if (mod && key === "a") { event.preventDefault(); useSessionStore.getState().setSelected(ordered.filter((e) => !e.locked && !e.hidden).map((e) => e.id)); }
       else if (mod && key === "c" && selectedIds.length) { event.preventDefault(); const current = useBoardStore.getState().board; await copyElements(ordered.filter((e) => selectedIdSet.has(e.id)), current ? connectorsWithin(current, selectedIdSet) : []); }
