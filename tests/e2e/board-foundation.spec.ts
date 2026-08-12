@@ -365,7 +365,7 @@ test("keeps the canvas usable without IndexedDB", async ({ browserName, page }, 
 
 test("wires two shapes together, previews the edge, and undoes in one step", async ({ page }, testInfo) => {
   const canvas = page.getByRole("main", { name: "Draftspace infinite canvas" });
-  const storedConnectors = () => page.evaluate(async () => new Promise<{ from: { elementId: string; port: string }; to: { elementId: string; port: string } }[]>((resolve, reject) => {
+  const storedConnectors = () => page.evaluate(async () => new Promise<{ id: string; from: { elementId: string; port: string }; to: { elementId: string; port: string } }[]>((resolve, reject) => {
     const id = localStorage.getItem("draftspace:last-board"); const request = indexedDB.open("draftspace");
     request.onerror = () => reject(request.error); request.onsuccess = () => {
       const database = request.result; const get = database.transaction("boards").objectStore("boards").get(id!);
@@ -455,8 +455,15 @@ test("wires two shapes together, previews the edge, and undoes in one step", asy
   await expect(page.locator(".connector-selection")).toHaveCount(1);
   await page.keyboard.press("ControlOrMeta+c");
   // Duplicate cannot act on an edge either: it adds nothing and leaves the halo where it was.
+  // The board's element count would not move even if the edge were copied, so the edges themselves
+  // are what has to be compared across the press.
+  const edgesBeforeDuplicate = (await storedConnectors()).map((edge) => edge.id);
   await page.keyboard.press("ControlOrMeta+d");
   await expect(page.locator(".connector-selection")).toHaveCount(1);
+  // Longer than the 500ms autosave debounce, so a copy this press should not have made has had
+  // every chance to reach storage before the edges are compared.
+  await page.waitForTimeout(1000);
+  expect((await storedConnectors()).map((edge) => edge.id), "duplicating an edge copies no edge").toEqual(edgesBeforeDuplicate);
   expect(await canvas.getAttribute("data-element-count")).toBe("2");
   await page.keyboard.press("ControlOrMeta+v");
   await expect.poll(() => canvas.getAttribute("data-element-count")).toBe("3");

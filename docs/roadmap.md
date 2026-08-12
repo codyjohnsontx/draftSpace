@@ -119,6 +119,8 @@ This roadmap favors interaction trust over feature count. Draftspace should earn
 
 **Goal:** Make system and process diagrams a first-class Draftspace workflow.
 
+**Delivered ahead of Phase 2.2.** Connectors needed only the geometry, styling, and history contracts Phase 2.1 settled, so the checked items below shipped before text, notes, and freehand start. Phase 2.2 keeps its place in the sequence and is still ahead of the unchecked work here.
+
 - [x] Connector tool with a direct toolbar button and C shortcut, explicit bindings, and anchor previews
 - [x] Connector selection and deletion
 - [x] Connector styling: color, width, kind, and label

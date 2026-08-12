@@ -35,6 +35,18 @@ describe("duplicating from the keyboard", () => {
     expect(useBoardStore.getState().board?.elementIds).toHaveLength(2);
   });
 
+  it("leaves the selection alone when there is no board to duplicate from", () => {
+    const id = "an-id-from-a-board-that-closed";
+    useBoardStore.setState({ board: null });
+    useSessionStore.getState().setSelected([id]);
+    render(<CanvasWorkspace />);
+
+    pressDuplicate();
+
+    expect(useSessionStore.getState().selectedIds).toEqual([id]);
+    expect(useBoardStore.getState().board).toBeNull();
+  });
+
   it("leaves the selection alone when the duplicate is refused", () => {
     const id = selectedShape();
     render(<CanvasWorkspace />);

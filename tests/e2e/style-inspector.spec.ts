@@ -29,12 +29,19 @@ type StoredBoard = { elements: Record<string, Record<string, unknown>>; connecto
 async function readStoredBoard(page: Page): Promise<StoredBoard> {
   return page.evaluate(async () => new Promise<StoredBoard>((resolve, reject) => {
     const id = localStorage.getItem("draftspace:last-board");
+    // Without an id there is nothing to ask IndexedDB for, and get(null) would throw where no
+    // reject can see it, leaving this promise hanging until the test times out with nothing to read.
+    if (!id) { reject(new Error("no board is open: draftspace:last-board is not set")); return; }
     const request = indexedDB.open("draftspace");
     request.onerror = () => reject(request.error);
     request.onsuccess = () => {
       const database = request.result;
-      const get = database.transaction("boards").objectStore("boards").get(id!);
-      get.onsuccess = () => { database.close(); resolve(get.result); };
+      const get = database.transaction("boards").objectStore("boards").get(id);
+      get.onsuccess = () => {
+        database.close();
+        if (!get.result) { reject(new Error(`no stored board for id ${id}`)); return; }
+        resolve(get.result);
+      };
       get.onerror = () => { database.close(); reject(get.error); };
     };
   }));
