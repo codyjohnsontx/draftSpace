@@ -407,13 +407,16 @@ test("wires two shapes together, previews the edge, and undoes in one step", asy
 
   // Wiring the same pair the same way again would only stack an invisible duplicate.
   await page.mouse.move(360, 250); await page.mouse.down(); await page.mouse.move(630, 250, { steps: 10 }); await page.mouse.up();
-  await page.waitForTimeout(300);
+  // Longer than the 500ms autosave debounce, so a second edge this drag should not have wired
+  // has had every chance to reach storage before the count is read.
+  await page.waitForTimeout(1000);
   expect(await storedConnectors()).toHaveLength(1);
 
   // The connector stays armed, and a drag that ends on empty board wires nothing.
   await expect(page.getByRole("button", { name: "Connector" })).toHaveAttribute("aria-pressed", "true");
   await page.mouse.move(290, 250); await page.mouse.down(); await page.mouse.move(400, 520, { steps: 10 }); await page.mouse.up();
-  await page.waitForTimeout(300);
+  // Same reason: past the 500ms debounce, so an edge dropped on empty board would already be stored.
+  await page.waitForTimeout(1000);
   expect(await storedConnectors()).toHaveLength(1);
 
   // Connecting is one history entry, and deleting an end takes the edge with it.
