@@ -1,5 +1,5 @@
 import type { BoardDocument } from "@/core/board/types";
-import type { CanvasElement, Connector, ConnectorMutablePatch } from "@/core/elements/types";
+import { CONNECTOR_LABEL_MAX_LENGTH, type CanvasElement, type Connector, type ConnectorMutablePatch } from "@/core/elements/types";
 import { z } from "zod";
 import { canvasElementSchema, connectorArrowsSchema, connectorSchema } from "@/schemas/board-schema";
 import { newId } from "@/lib/ids/new-id";
@@ -63,7 +63,7 @@ const mutablePatchSchema = z.strictObject({
 });
 
 const connectorPatchSchema = z.strictObject({
-  kind: z.enum(["sync", "async", "data"]).optional(), arrows: connectorArrowsSchema.optional(), label: z.string().max(120).nullable().optional(),
+  kind: z.enum(["sync", "async", "data"]).optional(), arrows: connectorArrowsSchema.optional(), label: z.string().max(CONNECTOR_LABEL_MAX_LENGTH).nullable().optional(),
   strokeColor: z.string().min(1).max(64).optional(), strokeWidth: z.number().positive().finite().optional(), locked: z.boolean().optional(),
 });
 

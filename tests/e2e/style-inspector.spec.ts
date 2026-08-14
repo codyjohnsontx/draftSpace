@@ -23,18 +23,32 @@ async function setRange(page: Page, name: string, value: number) {
   await slider.dispatchEvent("pointerup");
 }
 
-async function readStoredElements(page: Page) {
-  return page.evaluate(async () => new Promise<Record<string, Record<string, unknown>>>((resolve, reject) => {
+type StoredBoard = { elements: Record<string, Record<string, unknown>>; connectorIds: string[]; connectors: Record<string, Record<string, unknown>> };
+
+/** The last-opened board exactly as IndexedDB holds it; both projections below read through this. */
+async function readStoredBoard(page: Page): Promise<StoredBoard> {
+  return page.evaluate(async () => new Promise<StoredBoard>((resolve, reject) => {
     const id = localStorage.getItem("draftspace:last-board");
+    // Without an id there is nothing to ask IndexedDB for, and get(null) would throw where no
+    // reject can see it, leaving this promise hanging until the test times out with nothing to read.
+    if (!id) { reject(new Error("no board is open: draftspace:last-board is not set")); return; }
     const request = indexedDB.open("draftspace");
     request.onerror = () => reject(request.error);
     request.onsuccess = () => {
       const database = request.result;
-      const get = database.transaction("boards").objectStore("boards").get(id!);
-      get.onsuccess = () => { database.close(); resolve(get.result.elements); };
+      const get = database.transaction("boards").objectStore("boards").get(id);
+      get.onsuccess = () => {
+        database.close();
+        if (!get.result) { reject(new Error(`no stored board for id ${id}`)); return; }
+        resolve(get.result);
+      };
       get.onerror = () => { database.close(); reject(get.error); };
     };
   }));
+}
+
+async function readStoredElements(page: Page) {
+  return (await readStoredBoard(page)).elements;
 }
 
 test("styles a selected shape with one-entry continuous edits", async ({ browserName, page }, testInfo) => {
@@ -169,17 +183,8 @@ test("handles mixed selections, rectangle-only corners, and recent custom colors
 });
 
 async function readStoredConnectors(page: Page) {
-  return page.evaluate(async () => new Promise<Record<string, unknown>[]>((resolve, reject) => {
-    const id = localStorage.getItem("draftspace:last-board");
-    const request = indexedDB.open("draftspace");
-    request.onerror = () => reject(request.error);
-    request.onsuccess = () => {
-      const database = request.result;
-      const get = database.transaction("boards").objectStore("boards").get(id!);
-      get.onsuccess = () => { database.close(); resolve(get.result.connectorIds.map((connectorId: string) => get.result.connectors[connectorId])); };
-      get.onerror = () => { database.close(); reject(get.error); };
-    };
-  }));
+  const board = await readStoredBoard(page);
+  return board.connectorIds.map((connectorId) => board.connectors[connectorId]);
 }
 
 test("styles and names a selected connector", async ({ browserName, page }, testInfo) => {

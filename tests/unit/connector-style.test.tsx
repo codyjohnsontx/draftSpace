@@ -3,6 +3,8 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { createBoard } from "@/core/board/factory";
 import type { BoardDocument } from "@/core/board/types";
 import { parseBoardCommand } from "@/core/commands/board-command";
+import { CONNECTOR_LABEL_MAX_LENGTH } from "@/core/elements/types";
+import { connectorSchema } from "@/schemas/board-schema";
 import { connectorPolyline, polylineMidpoint } from "@/core/connectors/routing";
 import { renderScene } from "@/core/rendering/render-scene";
 import { StyleInspector } from "@/components/inspector/style-inspector";
@@ -138,8 +140,10 @@ describe("where an edge's name is drawn", () => {
   });
 
   it("sets a name off the line it names, above a horizontal run and beside a vertical one", () => {
-    const { firstId, secondId, edge } = wiredBoard();
-    useBoardStore.getState().updateConnectors([firstId, secondId], { label: "publishes" }, "Rename connector", "rename");
+    const { aId, cId, firstId, secondId, edge } = wiredBoard();
+    // A third edge between the two west sides: its half-length lands on the vertical run down the gap.
+    const thirdId = useBoardStore.getState().createConnector({ elementId: aId, port: "w" }, { elementId: cId, port: "w" })!;
+    useBoardStore.getState().updateConnectors([firstId, secondId, thirdId], { label: "publishes" }, "Rename connector", "rename");
     const board = useBoardStore.getState().board!;
     const names = (connector: typeof board.connectors[string]) => {
       const context = drawingContext();
@@ -151,11 +155,18 @@ describe("where an edge's name is drawn", () => {
     const [[, x, y]] = names(edge(firstId));
     expect(x).toBeCloseTo(middle.point.x, 6);
     expect(y).toBeLessThan(middle.point.y);
-    // The second edge leaves the south port, so its name is set beside the run rather than over it.
+    // The second edge's south-to-west elbow is mostly one horizontal run by length, so its name also sits above the line.
     const other = polylineMidpoint(connectorPolyline(board, edge(secondId))!)!;
+    expect(other.horizontal).toBe(true);
     const [[, otherX, otherY]] = names(edge(secondId));
-    if (other.horizontal) expect(otherY).toBeLessThan(other.point.y);
-    else { expect(otherX).toBeGreaterThan(other.point.x); expect(otherY).toBeCloseTo(other.point.y, 6); }
+    expect(otherX).toBeCloseTo(other.point.x, 6);
+    expect(otherY).toBeLessThan(other.point.y);
+    // The third edge's midpoint is on its vertical run, so its name is set beside the line rather than over it.
+    const vertical = polylineMidpoint(connectorPolyline(board, edge(thirdId))!)!;
+    expect(vertical.horizontal).toBe(false);
+    const [[, verticalX, verticalY]] = names(edge(thirdId));
+    expect(verticalX).toBeGreaterThan(vertical.point.x);
+    expect(verticalY).toBeCloseTo(vertical.point.y, 6);
   });
 });
 
@@ -224,6 +235,19 @@ describe("the inspector with edges held", () => {
     fireEvent.blur(cleared);
     // An edge with nothing written on it carries no name at all, so nothing is drawn on its route.
     expect(edge(firstId).label).toBeNull();
+  });
+
+  it("bounds a name at one length in the field, the command, and the stored document", () => {
+    const { firstId, edge } = wiredBoard();
+    showInspector([firstId]);
+    const field = screen.getByLabelText("Connector label") as HTMLInputElement;
+    expect(field.maxLength).toBe(CONNECTOR_LABEL_MAX_LENGTH);
+    const longest = "x".repeat(CONNECTOR_LABEL_MAX_LENGTH);
+    const patch = (label: string) => ({ type: "connectors.update", updates: [{ connectorId: firstId, patch: { label } }] });
+    expect(parseBoardCommand(patch(longest))).not.toBeNull();
+    expect(parseBoardCommand(patch(`${longest}x`))).toBeNull();
+    expect(connectorSchema.safeParse({ ...edge(firstId), label: longest }).success).toBe(true);
+    expect(connectorSchema.safeParse({ ...edge(firstId), label: `${longest}x` }).success).toBe(false);
   });
 
   it("shows the color being tried out without writing it to the board until it is committed", () => {

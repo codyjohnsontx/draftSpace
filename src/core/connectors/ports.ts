@@ -2,12 +2,15 @@ import type { Bounds, Connector, Point, PortSide } from "@/core/elements/types";
 
 export const PORT_SIDES: PortSide[] = ["n", "e", "s", "w"];
 
+/** The two coordinates of a port anchor, apart, so a hot scan can measure one without building a point. */
+export const portX = (bounds: Bounds, side: PortSide): number =>
+  side === "w" ? bounds.x : side === "e" ? bounds.x + bounds.width : bounds.x + bounds.width / 2;
+export const portY = (bounds: Bounds, side: PortSide): number =>
+  side === "n" ? bounds.y : side === "s" ? bounds.y + bounds.height : bounds.y + bounds.height / 2;
+
 /** Anchor point of a port on a shape's axis-aligned bounds, in board coordinates. */
 export function portPoint(bounds: Bounds, side: PortSide): Point {
-  if (side === "n") return { x: bounds.x + bounds.width / 2, y: bounds.y };
-  if (side === "s") return { x: bounds.x + bounds.width / 2, y: bounds.y + bounds.height };
-  if (side === "w") return { x: bounds.x, y: bounds.y + bounds.height / 2 };
-  return { x: bounds.x + bounds.width, y: bounds.y + bounds.height / 2 };
+  return { x: portX(bounds, side), y: portY(bounds, side) };
 }
 
 /** Outward unit direction of a port. */

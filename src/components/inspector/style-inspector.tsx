@@ -94,7 +94,7 @@ export function StyleInspector() {
       <InspectorModeControls mode={preferences.mode} onSelect={selectMode} />
     </div>
     {selectedConnectors.length ? <ConnectorControls connectors={displayedConnectors} recentColors={recentColors} />
-      : !selected.length ? <div className="inspector-empty"><strong>Select a shape</strong><p>Select a shape or a connector to edit its style.</p></div> : <div className="inspector-controls">
+      : !selected.length ? <div className="inspector-empty"><strong>Select a shape or a connector</strong><p>Select a shape or a connector to edit its style.</p></div> : <div className="inspector-controls">
       <ColorControl label="Fill" value={fill} allowNone recentColors={recentColors} onSelect={(color) => applyStyle({ fillColor: color }, color ?? undefined)} onPreview={(color) => previewStyle({ fillColor: color })} onCommit={(color) => finishPreview(color)} onCancel={cancelPreview} />
       <ColorControl label="Stroke" value={stroke} recentColors={recentColors} onSelect={(color) => color && applyStyle({ strokeColor: color }, color)} onPreview={(color) => previewStyle({ strokeColor: color })} onCommit={(color) => finishPreview(color)} onCancel={cancelPreview} />
       <fieldset className="inspector-group compact-group"><legend>Width{strokeWidth.kind === "mixed" && <span className="mixed-value">Mixed</span>}</legend><div className="segmented-control">

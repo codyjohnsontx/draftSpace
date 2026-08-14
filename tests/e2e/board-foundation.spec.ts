@@ -365,7 +365,7 @@ test("keeps the canvas usable without IndexedDB", async ({ browserName, page }, 
 
 test("wires two shapes together, previews the edge, and undoes in one step", async ({ page }, testInfo) => {
   const canvas = page.getByRole("main", { name: "Draftspace infinite canvas" });
-  const storedConnectors = () => page.evaluate(async () => new Promise<{ from: { elementId: string; port: string }; to: { elementId: string; port: string } }[]>((resolve, reject) => {
+  const storedConnectors = () => page.evaluate(async () => new Promise<{ id: string; from: { elementId: string; port: string }; to: { elementId: string; port: string } }[]>((resolve, reject) => {
     const id = localStorage.getItem("draftspace:last-board"); const request = indexedDB.open("draftspace");
     request.onerror = () => reject(request.error); request.onsuccess = () => {
       const database = request.result; const get = database.transaction("boards").objectStore("boards").get(id!);
@@ -407,13 +407,16 @@ test("wires two shapes together, previews the edge, and undoes in one step", asy
 
   // Wiring the same pair the same way again would only stack an invisible duplicate.
   await page.mouse.move(360, 250); await page.mouse.down(); await page.mouse.move(630, 250, { steps: 10 }); await page.mouse.up();
-  await page.waitForTimeout(300);
+  // Longer than the 500ms autosave debounce, so a second edge this drag should not have wired
+  // has had every chance to reach storage before the count is read.
+  await page.waitForTimeout(1000);
   expect(await storedConnectors()).toHaveLength(1);
 
   // The connector stays armed, and a drag that ends on empty board wires nothing.
   await expect(page.getByRole("button", { name: "Connector" })).toHaveAttribute("aria-pressed", "true");
   await page.mouse.move(290, 250); await page.mouse.down(); await page.mouse.move(400, 520, { steps: 10 }); await page.mouse.up();
-  await page.waitForTimeout(300);
+  // Same reason: past the 500ms debounce, so an edge dropped on empty board would already be stored.
+  await page.waitForTimeout(1000);
   expect(await storedConnectors()).toHaveLength(1);
 
   // Connecting is one history entry, and deleting an end takes the edge with it.
@@ -454,6 +457,17 @@ test("wires two shapes together, previews the edge, and undoes in one step", asy
   await page.mouse.click(460, 250);
   await expect(page.locator(".connector-selection")).toHaveCount(1);
   await page.keyboard.press("ControlOrMeta+c");
+  // Duplicate cannot act on an edge either: it adds nothing and leaves the halo where it was.
+  // The board's element count would not move even if the edge were copied, so the edges themselves
+  // are what has to be compared across the press.
+  const edgesBeforeDuplicate = (await storedConnectors()).map((edge) => edge.id);
+  await page.keyboard.press("ControlOrMeta+d");
+  await expect(page.locator(".connector-selection")).toHaveCount(1);
+  // Longer than the 500ms autosave debounce, so a copy this press should not have made has had
+  // every chance to reach storage before the edges are compared.
+  await page.waitForTimeout(1000);
+  expect((await storedConnectors()).map((edge) => edge.id), "duplicating an edge copies no edge").toEqual(edgesBeforeDuplicate);
+  expect(await canvas.getAttribute("data-element-count")).toBe("2");
   await page.keyboard.press("ControlOrMeta+v");
   await expect.poll(() => canvas.getAttribute("data-element-count")).toBe("3");
   await page.keyboard.press("ControlOrMeta+z");
