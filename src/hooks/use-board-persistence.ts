@@ -56,6 +56,17 @@ export function useBoardPersistence(): PersistenceController {
     await current?.drain();
   }, []);
 
+  /**
+   * The one gate the open board's work passes before anything lets go of it. A coordinator that
+   * cannot be asked - because there is none, or because storage has already been given up on -
+   * holds work nothing will ever write, so it answers the same as a write storage refused.
+   */
+  const settleOpenBoard = useCallback(async () => {
+    const outgoing = coordinator.current;
+    if (!outgoing || usePersistenceStore.getState().status === "session-only") return false;
+    return outgoing.settle();
+  }, []);
+
   const startCoordinator = useCallback(async () => {
     await drainCoordinator();
     const nextCoordinator = new AutosaveCoordinator({
@@ -211,7 +222,7 @@ export function useBoardPersistence(): PersistenceController {
       const result = loadBoardDocument(boardId, await repository.getRawById(boardId));
       if (result.kind !== "ready") return "unreadable";
       flushViewport();
-      if (coordinator.current && !(await coordinator.current.settle())) return "unsaved-work";
+      if (!(await settleOpenBoard())) return "unsaved-work";
       persistence.markLoading();
       await drainCoordinator();
       useBoardStore.getState().setBoard(result.board);
@@ -226,8 +237,14 @@ export function useBoardPersistence(): PersistenceController {
       const latestRevision = useBoardStore.getState().revision;
       if (latestRevision > 0) activeCoordinator.schedule(latestRevision);
       return "opened";
-    } catch (error) { console.error("Draftspace could not open that board", error); enterSessionOnly(error); return "unreadable"; }
-  }, [drainCoordinator, enterSessionOnly, flushViewport, repository, startCoordinator]);
+    } catch (error) {
+      console.error("Draftspace could not open that board", error);
+      enterSessionOnly(error);
+      // A throw after the swap leaves the picked board on screen, so the row must not also claim
+      // it could not be opened; the session-only status is what has something left to say.
+      return useBoardStore.getState().board?.id === boardId ? "opened" : "unreadable";
+    }
+  }, [drainCoordinator, enterSessionOnly, flushViewport, repository, settleOpenBoard, startCoordinator]);
 
   const downloadRecovery = useCallback(async () => {
     const recovery = usePersistenceStore.getState().recovery; if (!recovery) return;

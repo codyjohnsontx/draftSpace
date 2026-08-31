@@ -28,7 +28,7 @@ export class AutosaveCoordinator {
   private activeSave: Promise<void> | null = null;
   private disposed = false;
   private savedRevision = 0;
-  private writeFailed = false;
+  private lastWriteError: PersistenceError | null = null;
   private readonly debounceMs: number;
   private readonly retryDelays: number[];
 
@@ -64,12 +64,12 @@ export class AutosaveCoordinator {
     this.activeSave = this.options.repository.update(snapshot).then(() => {
       recordPerformanceSample({ name: "indexeddb-save", durationMs: performanceNow() - saveStartedAt, elementCount: snapshot.elementIds.length });
       this.retryIndex = 0;
-      this.writeFailed = false;
+      this.lastWriteError = null;
       this.savedRevision = Math.max(this.savedRevision, revision);
       if (this.options.getRevision() === revision) this.options.onStateChange({ type: "saved", revision, savedAt: new Date().toISOString() });
     }).catch((cause) => {
       const error = normalizePersistenceError(cause, "write");
-      this.writeFailed = true;
+      this.lastWriteError = error;
       if (this.retryIndex < this.retryDelays.length) {
         const delay = this.retryDelays[this.retryIndex++];
         this.retryTimer = setTimeout(() => { this.retryTimer = null; this.activeSave = null; void this.flush("manual"); }, delay);
@@ -96,16 +96,20 @@ export class AutosaveCoordinator {
    * Writes everything this coordinator still holds and reports whether storage took it. A caller
    * about to let go of the board asks this rather than `flush`: a retry waiting out its backoff is
    * attempted now instead of skipped, and a write storage will not accept is answered with `false`
-   * rather than dropped on the next `drain`.
+   * rather than dropped on the next `drain`. Unlike `retry` this spends the backoff ladder it was
+   * handed instead of starting a fresh one, and it leaves the failure on the status it reports to.
    */
   async settle(): Promise<boolean> {
     if (this.disposed || !this.options.getBoard()) return true;
     if (!this.retryTimer && this.activeSave) await this.activeSave;
     for (let attempt = 0; attempt < 3 && this.hasUnsavedWork(); attempt += 1) {
-      await this.retry();
-      if (this.writeFailed) return false;
+      this.clearTimer("retry"); this.activeSave = null;
+      await this.flush("manual");
+      if (this.lastWriteError) break;
     }
-    return !this.hasUnsavedWork();
+    if (!this.hasUnsavedWork()) return true;
+    if (this.lastWriteError) this.options.onStateChange({ type: "failed", error: this.lastWriteError });
+    return false;
   }
 
   async drain() {

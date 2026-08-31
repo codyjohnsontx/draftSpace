@@ -155,7 +155,32 @@ describe("opening a second board", () => {
     expect(useBoardStore.getState().board?.id).toBe(first.id);
     expect(useBoardStore.getState().board?.elementIds).toHaveLength(1);
     expect(localStorage.getItem(LAST_BOARD)).toBe(first.id);
-    expect(usePersistenceStore.getState().status).not.toBe("saved");
+    // The refused switch leaves the failure showing rather than a fresh "saving" that hides it.
+    expect(usePersistenceStore.getState().status).toBe("failed");
+    expect(usePersistenceStore.getState().error?.message).toBeTruthy();
+    session.unmount(); update.mockRestore();
+  });
+
+  it("refuses to leave a board no coordinator is left to write", async () => {
+    const { first, second } = await seedTwoBoards();
+    const session = await openDraftspace();
+    await act(async () => { useBoardStore.getState().createShape("rectangle", { x: 10, y: 10, width: 80, height: 60 }); });
+    const update = vi.spyOn(IndexedDbBoardRepository.prototype, "update").mockRejectedValue(new Error("QuotaExceededError"));
+
+    // Retrying storage drains the coordinator before it writes, so a write that fails again drops
+    // the session to storage-less with the board still open and its work still only in this tab.
+    await act(async () => { await session.result.current.retryStorage(); });
+    expect(usePersistenceStore.getState().status).toBe("session-only");
+    const sessionOnlyError = usePersistenceStore.getState().error;
+
+    let outcome: OpenBoardOutcome = "opened";
+    await act(async () => { outcome = await session.result.current.openBoard(second.id); });
+    expect(outcome).toBe("unsaved-work");
+    expect(useBoardStore.getState().board?.id).toBe(first.id);
+    expect(useBoardStore.getState().board?.elementIds).toHaveLength(1);
+    expect(localStorage.getItem(LAST_BOARD)).toBe(first.id);
+    expect(usePersistenceStore.getState().status).toBe("session-only");
+    expect(usePersistenceStore.getState().error).toBe(sessionOnlyError);
     session.unmount(); update.mockRestore();
   });
 
@@ -174,5 +199,19 @@ describe("opening a second board", () => {
     expect(useBoardStore.getState().board?.elementIds).toHaveLength(1);
     expect(useBoardStore.getState().history.undo).toHaveLength(undoDepth);
     session.unmount(); read.mockRestore();
+  });
+
+  it("does not claim the picked board is unopenable when it is already on screen", async () => {
+    const { second } = await seedTwoBoards();
+    const session = await openDraftspace();
+    const remember = vi.spyOn(Storage.prototype, "setItem").mockImplementation(() => { throw new Error("quota"); });
+
+    let outcome: OpenBoardOutcome = "unreadable";
+    await act(async () => { outcome = await session.result.current.openBoard(second.id); });
+    remember.mockRestore();
+    expect(outcome).toBe("opened");
+    expect(useBoardStore.getState().board?.id).toBe(second.id);
+    expect(usePersistenceStore.getState().status).toBe("session-only");
+    session.unmount();
   });
 });

@@ -58,8 +58,11 @@ describe("autosave coordinator", () => {
     vi.useFakeTimers(); const update = vi.fn(async () => { throw new Error("nope"); }); const test = setup(update);
     test.coordinator.schedule(1); await vi.advanceTimersByTimeAsync(500);
     await expect(test.coordinator.settle()).resolves.toBe(false);
-    // The coordinator keeps the work, so its own backoff is still free to land it.
-    await vi.advanceTimersByTimeAsync(1000); expect(update).toHaveBeenCalledTimes(3);
+    // The failure is left on the status rather than a fresh "saving" that hides it.
+    expect(test.events.at(-1)).toMatchObject({ type: "failed" });
+    // The coordinator keeps the work, and spends the ladder it was on rather than starting over.
+    await vi.advanceTimersByTimeAsync(1999); expect(update).toHaveBeenCalledTimes(2);
+    await vi.advanceTimersByTimeAsync(1); expect(update).toHaveBeenCalledTimes(3);
   });
   it("disposal clears scheduled work", async () => {
     vi.useFakeTimers(); const test = setup(); test.coordinator.schedule(1); test.coordinator.dispose(); await vi.advanceTimersByTimeAsync(1000); expect(test.update).not.toHaveBeenCalled();
