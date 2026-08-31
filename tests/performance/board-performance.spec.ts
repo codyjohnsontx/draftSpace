@@ -86,7 +86,11 @@ async function runFixture(page: Page, testInfo: TestInfo, options: BenchmarkFixt
 for (const elementCount of [100, 500, 1000] as const) {
   for (const layout of ["all-visible", "distributed"] as const) {
     test(`${elementCount} elements / ${layout}`, async ({ page }, testInfo) => {
-      test.setTimeout(elementCount === 1000 ? 120_000 : 60_000);
+      // The 1,000-element fixture runs three rounds of scripted interaction to take a median, and
+      // wall clock is not what it asserts - the guardrails are the per-metric p95 caps below. Two
+      // minutes leaves that test around 95% spent late in a full suite run, where retries are off,
+      // so the budget is generous enough that a slow machine cannot fail a run that measured fine.
+      test.setTimeout(elementCount === 1000 ? 240_000 : 60_000);
       const options = { elementCount, layout };
       const runCount = elementCount === 1000 ? 3 : 1;
       const reports: BenchmarkReport[] = [];
