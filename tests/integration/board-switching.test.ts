@@ -106,11 +106,12 @@ describe("opening a second board", () => {
     await db.put("boards", { id: second.id, fileFormat: "draftspace/board", schemaVersion: 3, updatedAt: new Date().toISOString(), damaged: true });
     db.close();
 
-    await act(async () => { await session.result.current.openBoard(second.id); });
+    let opened = true;
+    await act(async () => { opened = await session.result.current.openBoard(second.id); });
+    expect(opened).toBe(false);
     expect(useBoardStore.getState().board?.id).toBe(first.id);
     expect(localStorage.getItem(LAST_BOARD)).toBe(first.id);
     expect(usePersistenceStore.getState().status).not.toBe("recovery-required");
-    expect(usePersistenceStore.getState().error?.code).toBe("read-failed");
     // The damaged record is never rewritten, and it drops out of the list rather than being offered again.
     expect(await storedBoard(second.id)).toMatchObject({ damaged: true });
     await waitFor(() => expect(usePersistenceStore.getState().boards.map((board) => board.id)).toEqual([first.id]));

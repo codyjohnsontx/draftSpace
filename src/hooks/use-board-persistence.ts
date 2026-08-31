@@ -9,7 +9,7 @@ import { useViewportStore } from "@/stores/viewport-store";
 import { AutosaveCoordinator, type AutosaveEvent } from "@/features/persistence/autosave-coordinator";
 import { loadBoardDocument } from "@/features/persistence/load-board-document";
 import { downloadBackup, serializeBoardBackup, serializeRecoveryBackup, type BackupResult } from "@/features/persistence/backup";
-import { normalizePersistenceError, persistenceError } from "@/features/persistence/persistence-errors";
+import { normalizePersistenceError } from "@/features/persistence/persistence-errors";
 import { performanceNow, recordPerformanceSample } from "@/features/performance/performance-monitor";
 
 const LAST_BOARD = "draftspace:last-board";
@@ -24,7 +24,8 @@ export type PersistenceController = {
   retrySave: () => Promise<void>;
   retryStorage: () => Promise<void>;
   startNewBoard: () => Promise<void>;
-  openBoard: (boardId: string) => Promise<void>;
+  /** Resolves to whether that board is now the open one. */
+  openBoard: (boardId: string) => Promise<boolean>;
   downloadRecovery: () => Promise<void>;
   downloadCurrentBackup: () => Promise<void>;
 };
@@ -190,17 +191,14 @@ export function useBoardPersistence(): PersistenceController {
    * will ever write it.
    */
   const openBoard = useCallback(async (boardId: string) => {
-    if (useBoardStore.getState().board?.id === boardId) return;
+    if (useBoardStore.getState().board?.id === boardId) return true;
     const persistence = usePersistenceStore.getState();
     try {
       // Read the target before letting go of the open board. The list only offers boards that
       // parsed, so an unreadable one here means another tab changed it; leaving the open board
       // untouched beats stranding it on a recovery screen it did not cause.
       const result = loadBoardDocument(boardId, await repository.getRawById(boardId));
-      if (result.kind !== "ready") {
-        persistence.setError(persistenceError("read-failed", "That board can no longer be opened from this browser.", false));
-        await refreshBoards(); return;
-      }
+      if (result.kind !== "ready") { await refreshBoards(); return false; }
       persistence.markLoading();
       flushViewport();
       await coordinator.current?.flush("manual");
@@ -216,7 +214,8 @@ export function useBoardPersistence(): PersistenceController {
       // An edit made while the swap was still awaiting storage has no coordinator to schedule it.
       const latestRevision = useBoardStore.getState().revision;
       if (latestRevision > 0) activeCoordinator.schedule(latestRevision);
-    } catch (error) { console.error("Draftspace could not open that board", error); enterSessionOnly(error); }
+      return true;
+    } catch (error) { console.error("Draftspace could not open that board", error); enterSessionOnly(error); return false; }
   }, [drainCoordinator, enterSessionOnly, flushViewport, refreshBoards, repository, startCoordinator]);
 
   const downloadRecovery = useCallback(async () => {

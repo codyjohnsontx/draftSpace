@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { fireEvent, render, screen } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { BoardSwitcher } from "@/components/app-shell/board-switcher";
 import { createBoard } from "@/core/board/factory";
 import type { BoardSummary } from "@/core/board/types";
@@ -7,7 +7,7 @@ import { useBoardStore } from "@/stores/board-store";
 import { usePersistenceStore } from "@/stores/persistence-store";
 import type { PersistenceController } from "@/hooks/use-board-persistence";
 
-const controller = (): PersistenceController => ({ retrySave: vi.fn(), retryStorage: vi.fn(), startNewBoard: vi.fn(), openBoard: vi.fn(), downloadRecovery: vi.fn(), downloadCurrentBackup: vi.fn() });
+const controller = (opened = true): PersistenceController => ({ retrySave: vi.fn(), retryStorage: vi.fn(), startNewBoard: vi.fn(), openBoard: vi.fn().mockResolvedValue(opened), downloadRecovery: vi.fn(), downloadCurrentBackup: vi.fn() });
 
 const open = createBoard("Payments architecture");
 const summary = (id: string, name: string, elementCount = 0): BoardSummary => ({ id, name, createdAt: "2026-08-01T10:00:00.000Z", updatedAt: "2026-08-02T10:00:00.000Z", elementCount });
@@ -37,12 +37,21 @@ describe("board switcher", () => {
     expect(screen.getByRole("menuitemradio", { name: /Recovered copy/ })).toHaveTextContent("4 elements");
   });
 
-  it("opens the board that is picked and closes the menu", () => {
+  it("opens the board that is picked and closes the menu", async () => {
     const actions = controller(); render(<BoardSwitcher controller={actions} />);
     fireEvent.click(screen.getByRole("button", { name: "Open a board" }));
     fireEvent.click(screen.getByRole("menuitemradio", { name: /Recovered copy/ }));
     expect(actions.openBoard).toHaveBeenCalledExactlyOnceWith("recovered");
-    expect(screen.queryByRole("menu", { name: "Boards in this browser" })).not.toBeInTheDocument();
+    await waitFor(() => expect(screen.queryByRole("menu", { name: "Boards in this browser" })).not.toBeInTheDocument());
+  });
+
+  it("says so on the row rather than closing on a click that opened nothing", async () => {
+    const actions = controller(false); render(<BoardSwitcher controller={actions} />);
+    fireEvent.click(screen.getByRole("button", { name: "Open a board" }));
+    fireEvent.click(screen.getByRole("menuitemradio", { name: /Recovered copy/ }));
+    await waitFor(() => expect(screen.getByRole("menuitemradio", { name: /Recovered copy/ })).toHaveTextContent("can no longer be opened"));
+    expect(screen.getByRole("menu", { name: "Boards in this browser" })).toBeVisible();
+    expect(screen.getByRole("menuitemradio", { name: /Payments architecture/ })).toHaveAttribute("aria-checked", "true");
   });
 
   it("does not reopen the board that is already showing", () => {
