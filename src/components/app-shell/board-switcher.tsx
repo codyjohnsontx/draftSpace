@@ -84,10 +84,10 @@ export function BoardSwitcher({ controller }: { controller: PersistenceControlle
           {board.id === openBoardId && <Check size={16} className="mode-check" aria-hidden="true" />}
         </button>;
       })}
-      {/* Swapping the row's own text does not re-announce a control the reader is already on, so
-          the refusal is spoken from here. Mounted with the menu and empty, because a live region
-          that arrives with its text is a live region nothing announces. */}
-      <div className="sr-only" role="status">{refused ? refusedSummary[refused.outcome] : ""}</div>
     </div>}
+    {/* Swapping the row's own text does not re-announce a control the reader is already on, so the
+        refusal is spoken from here. It sits outside the menu, which admits no such child, and it is
+        never mounted with its text: a live region that arrives already speaking announces nothing. */}
+    <div className="sr-only" role="status">{refused ? refusedSummary[refused.outcome] : ""}</div>
   </div>;
 }

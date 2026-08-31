@@ -56,13 +56,21 @@ describe("board switcher", () => {
 
   it("speaks the refusal from a live region that was already there to speak from", async () => {
     const actions = controller("unreadable"); render(<BoardSwitcher controller={actions} />);
+    // There and empty before the menu is ever opened: a region that arrives carrying its text
+    // announces nothing, so it must predate the refusal it has to speak.
+    expect(screen.getByRole("status")).toBeEmptyDOMElement();
     fireEvent.click(screen.getByRole("button", { name: "Open a board" }));
-    // Empty and mounted with the menu: a region that arrives carrying its text announces nothing.
-    expect(screen.getByRole("status")).toHaveTextContent("");
+    expect(screen.getByRole("status")).toBeEmptyDOMElement();
     fireEvent.click(screen.getByRole("menuitemradio", { name: /Recovered copy/ }));
     await waitFor(() => expect(screen.getByRole("status")).toHaveTextContent("This board can no longer be opened from this browser."));
     // Reachable by role means reachable to a reader: it is hidden by clip, not taken out of the tree.
     expect(screen.getByRole("status")).toHaveClass("sr-only");
+    // Reopening empties it, so the next refusal is a change the reader hears rather than a repeat.
+    fireEvent.click(screen.getByRole("button", { name: "Open a board" }));
+    fireEvent.click(screen.getByRole("button", { name: "Open a board" }));
+    expect(screen.getByRole("status")).toBeEmptyDOMElement();
+    fireEvent.click(screen.getByRole("menuitemradio", { name: /Recovered copy/ }));
+    await waitFor(() => expect(screen.getByRole("status")).toHaveTextContent("This board can no longer be opened from this browser."));
   });
 
   it("names the open board as the reason when its work could not be saved", async () => {
