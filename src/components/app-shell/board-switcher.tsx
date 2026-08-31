@@ -29,6 +29,8 @@ export function BoardSwitcher({ controller }: { controller: PersistenceControlle
   const [open, setOpen] = useState(false);
   // A board can stop being readable between this list being built and the user picking it.
   const [unavailable, setUnavailable] = useState<string | null>(null);
+  // The menu stays up while a board opens, so a second pick must not race the first.
+  const opening = useRef(false);
   const wrapRef = useRef<HTMLDivElement>(null);
   const buttonRef = useRef<HTMLButtonElement>(null);
 
@@ -45,9 +47,12 @@ export function BoardSwitcher({ controller }: { controller: PersistenceControlle
   // says so here rather than closing on a click that did nothing.
   const choose = async (board: BoardSummary) => {
     if (board.id === openBoardId) { setOpen(false); buttonRef.current?.focus(); return; }
-    setUnavailable(null);
-    if (await controller.openBoard(board.id)) { setOpen(false); buttonRef.current?.focus(); return; }
-    setUnavailable(board.id);
+    if (opening.current) return;
+    opening.current = true; setUnavailable(null);
+    try {
+      if (await controller.openBoard(board.id)) { setOpen(false); buttonRef.current?.focus(); return; }
+      setUnavailable(board.id);
+    } finally { opening.current = false; }
   };
 
   return <div className="board-switcher" ref={wrapRef} onKeyDown={(event) => {

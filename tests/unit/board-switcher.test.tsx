@@ -54,6 +54,20 @@ describe("board switcher", () => {
     expect(screen.getByRole("menuitemradio", { name: /Payments architecture/ })).toHaveAttribute("aria-checked", "true");
   });
 
+  it("ignores a second pick while a board is still opening", async () => {
+    const actions = controller();
+    let release: (opened: boolean) => void = () => {};
+    actions.openBoard = vi.fn().mockReturnValue(new Promise<boolean>((resolve) => { release = resolve; }));
+    usePersistenceStore.setState({ boards: [summary(open.id, open.name), other, summary("third", "Third board")] });
+    render(<BoardSwitcher controller={actions} />);
+    fireEvent.click(screen.getByRole("button", { name: "Open a board" }));
+    fireEvent.click(screen.getByRole("menuitemradio", { name: /Recovered copy/ }));
+    fireEvent.click(screen.getByRole("menuitemradio", { name: /Third board/ }));
+    expect(actions.openBoard).toHaveBeenCalledExactlyOnceWith("recovered");
+    release(true);
+    await waitFor(() => expect(screen.queryByRole("menu", { name: "Boards in this browser" })).not.toBeInTheDocument());
+  });
+
   it("does not reopen the board that is already showing", () => {
     const actions = controller(); render(<BoardSwitcher controller={actions} />);
     fireEvent.click(screen.getByRole("button", { name: "Open a board" }));
