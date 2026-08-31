@@ -23,9 +23,14 @@ const storedBoards = (page: Page) => page.evaluate(async () => new Promise<{ id:
   const request = indexedDB.open("draftspace");
   request.onerror = () => reject(request.error);
   request.onsuccess = () => {
-    const db = request.result; const all = db.transaction("boards").objectStore("boards").getAll();
-    all.onsuccess = () => { db.close(); resolve(all.result.map((doc) => ({ id: doc.id, name: doc.name, elements: doc.elementIds.length }))); };
-    all.onerror = () => { db.close(); reject(all.error); };
+    const db = request.result;
+    // Opening without a version creates the database when it is absent, so the store can be
+    // missing and `transaction` throws here. Reject, or the poll below just waits out its timeout.
+    try {
+      const all = db.transaction("boards").objectStore("boards").getAll();
+      all.onsuccess = () => { db.close(); resolve(all.result.map((doc) => ({ id: doc.id, name: doc.name, elements: doc.elementIds.length }))); };
+      all.onerror = () => { db.close(); reject(all.error); };
+    } catch (error) { db.close(); reject(error); }
   };
 }));
 

@@ -31,6 +31,14 @@ describe("who is offered the board switcher", () => {
     expect(screen.queryByRole("button", { name: "Open a board" })).not.toBeInTheDocument();
   });
 
+  // A guest is in someone else's room; the local board list is not theirs to switch, and the
+  // room is served from whatever board is open.
+  it.each<CollaborationStatus>(["connecting", "connected", "host-away", "lobby"])("withholds it from a collaboration guest (%s)", (status) => {
+    useCollaborationStore.getState().set({ mode: "guest", status });
+    render(<TopBar persistence={controller()} />);
+    expect(screen.queryByRole("button", { name: "Open a board" })).not.toBeInTheDocument();
+  });
+
   it("offers it again once the room is over", () => {
     useCollaborationStore.getState().set({ mode: "host", status: "ended" });
     render(<TopBar persistence={controller()} />);

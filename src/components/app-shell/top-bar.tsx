@@ -45,7 +45,7 @@ export function TopBar({ persistence }: { persistence?: PersistenceController })
           host's room is served from the board that is open, so swapping it under a room that is
           still live server-side, including one the host is reconnecting to, would leave every
           guest on a board the host is no longer editing. */}
-      {persistence && !hostingLiveRoom && <BoardSwitcher controller={persistence} />}
+      {persistence && collaborationMode !== "guest" && !hostingLiveRoom && <BoardSwitcher controller={persistence} />}
     </div>
     <div className="top-actions">
       {persistence ? <PersistenceStatus controller={persistence} /> : <LiveRoomStatus />}
