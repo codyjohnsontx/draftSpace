@@ -4,11 +4,12 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { createBoard, useBoardStore } from "@/stores/board-store";
 import { usePersistenceStore } from "@/stores/persistence-store";
 import { IndexedDbBoardRepository } from "@/repositories/indexeddb-board-repository";
+import { useSessionStore } from "@/stores/session-store";
 import { useViewportStore } from "@/stores/viewport-store";
 import { AutosaveCoordinator, type AutosaveEvent } from "@/features/persistence/autosave-coordinator";
 import { loadBoardDocument } from "@/features/persistence/load-board-document";
 import { downloadBackup, serializeBoardBackup, serializeRecoveryBackup, type BackupResult } from "@/features/persistence/backup";
-import { normalizePersistenceError } from "@/features/persistence/persistence-errors";
+import { normalizePersistenceError, persistenceError } from "@/features/persistence/persistence-errors";
 import { performanceNow, recordPerformanceSample } from "@/features/performance/performance-monitor";
 
 const LAST_BOARD = "draftspace:last-board";
@@ -23,6 +24,7 @@ export type PersistenceController = {
   retrySave: () => Promise<void>;
   retryStorage: () => Promise<void>;
   startNewBoard: () => Promise<void>;
+  openBoard: (boardId: string) => Promise<void>;
   downloadRecovery: () => Promise<void>;
   downloadCurrentBackup: () => Promise<void>;
 };
@@ -33,6 +35,7 @@ export function useBoardPersistence(): PersistenceController {
   const viewportTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const initialized = useRef(false);
   const revision = useBoardStore((state) => state.revision);
+  const openBoardId = useBoardStore((state) => state.board?.id ?? null);
 
   const handleAutosaveEvent = useCallback((event: AutosaveEvent) => {
     const state = usePersistenceStore.getState();
@@ -72,6 +75,12 @@ export function useBoardPersistence(): PersistenceController {
     usePersistenceStore.getState().enterSessionOnly(normalizePersistenceError(error, "read"));
   }, []);
 
+  /** Re-reads which boards this browser holds. Failing to list them must never disturb the open board. */
+  const refreshBoards = useCallback(async () => {
+    try { usePersistenceStore.getState().setBoards(await repository.list()); }
+    catch (error) { console.debug("Draftspace could not list local boards", error); }
+  }, [repository]);
+
   useEffect(() => {
     if (initialized.current) return; initialized.current = true;
     const persistence = usePersistenceStore.getState();
@@ -110,6 +119,10 @@ export function useBoardPersistence(): PersistenceController {
 
   useEffect(() => () => coordinator.current?.dispose(), []);
 
+  // Read the list once a board is open rather than on the path that blocks first paint. This
+  // covers every way the open board changes: first load, recovery, storage retry, and switching.
+  useEffect(() => { if (openBoardId) void refreshBoards(); }, [openBoardId, refreshBoards]);
+
   useEffect(() => {
     if (!initialized.current || revision === 0) return;
     coordinator.current?.schedule(revision);
@@ -125,14 +138,18 @@ export function useBoardPersistence(): PersistenceController {
   }, [flushViewport]);
 
   useEffect(() => {
-    const visibility = () => { if (document.visibilityState === "hidden") { flushViewport(); void coordinator.current?.flush("visibility"); } };
+    const visibility = () => {
+      if (document.visibilityState === "hidden") { flushViewport(); void coordinator.current?.flush("visibility"); return; }
+      // Another tab may have added a board while this one sat in the background.
+      void refreshBoards();
+    };
     const pagehide = () => { flushViewport(); void coordinator.current?.flush("pagehide"); };
     const online = () => usePersistenceStore.getState().setNetworkOnline(true);
     const offline = () => usePersistenceStore.getState().setNetworkOnline(false);
     document.addEventListener("visibilitychange", visibility); window.addEventListener("pagehide", pagehide);
     window.addEventListener("online", online); window.addEventListener("offline", offline);
     return () => { document.removeEventListener("visibilitychange", visibility); window.removeEventListener("pagehide", pagehide); window.removeEventListener("online", online); window.removeEventListener("offline", offline); };
-  }, [flushViewport]);
+  }, [flushViewport, refreshBoards]);
 
   const retrySave = useCallback(async () => { await coordinator.current?.retry(); }, []);
 
@@ -167,6 +184,41 @@ export function useBoardPersistence(): PersistenceController {
     catch (error) { enterSessionOnly(normalizePersistenceError(error, "write")); }
   }, [drainCoordinator, enterSessionOnly, repository, startCoordinator]);
 
+  /**
+   * Opens another stored board in place. The board being left is flushed first: whatever is still
+   * inside the autosave debounce belongs to it, and once its coordinator is drained nothing else
+   * will ever write it.
+   */
+  const openBoard = useCallback(async (boardId: string) => {
+    if (useBoardStore.getState().board?.id === boardId) return;
+    const persistence = usePersistenceStore.getState();
+    try {
+      // Read the target before letting go of the open board. The list only offers boards that
+      // parsed, so an unreadable one here means another tab changed it; leaving the open board
+      // untouched beats stranding it on a recovery screen it did not cause.
+      const result = loadBoardDocument(boardId, await repository.getRawById(boardId));
+      if (result.kind !== "ready") {
+        persistence.setError(persistenceError("read-failed", "That board can no longer be opened from this browser.", false));
+        await refreshBoards(); return;
+      }
+      persistence.markLoading();
+      flushViewport();
+      await coordinator.current?.flush("manual");
+      await drainCoordinator();
+      useBoardStore.getState().setBoard(result.board);
+      // Selection and history belong to the board that was open, not to this one.
+      useSessionStore.getState().setSelected([]); useSessionStore.getState().setSelectedConnectors([]);
+      useViewportStore.getState().setViewport(result.board.preferences.restoreViewport ? result.board.viewport : { x: 0, y: 0, zoom: 1 });
+      localStorage.setItem(LAST_BOARD, result.board.id);
+      if (result.migrated) await repository.update(result.board);
+      const activeCoordinator = await startCoordinator();
+      persistence.markSaved(0, new Date().toISOString());
+      // An edit made while the swap was still awaiting storage has no coordinator to schedule it.
+      const latestRevision = useBoardStore.getState().revision;
+      if (latestRevision > 0) activeCoordinator.schedule(latestRevision);
+    } catch (error) { console.error("Draftspace could not open that board", error); enterSessionOnly(error); }
+  }, [drainCoordinator, enterSessionOnly, flushViewport, refreshBoards, repository, startCoordinator]);
+
   const downloadRecovery = useCallback(async () => {
     const recovery = usePersistenceStore.getState().recovery; if (!recovery) return;
     finishBackup(serializeRecoveryBackup(recovery));
@@ -177,5 +229,5 @@ export function useBoardPersistence(): PersistenceController {
     finishBackup(serializeBoardBackup(board));
   }, []);
 
-  return { retrySave, retryStorage, startNewBoard, downloadRecovery, downloadCurrentBackup };
+  return { retrySave, retryStorage, startNewBoard, openBoard, downloadRecovery, downloadCurrentBackup };
 }
