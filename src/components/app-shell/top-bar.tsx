@@ -22,6 +22,7 @@ export function TopBar({ persistence }: { persistence?: PersistenceController })
   const [inspectorMenuOpen, setInspectorMenuOpen] = useState(false);
   const [shareOpen, setShareOpen] = useState(false); const collaborationMode = useCollaborationStore((state) => state.mode); const collaborationStatus = useCollaborationStore((state) => state.status); const collaborationRole = useCollaborationStore((state) => state.role); const collaborationSelf = useCollaborationStore((state) => state.self); const participantCount = useCollaborationStore((state) => Object.keys(state.participants).length + 1); const pendingCount = useCollaborationStore((state) => Object.keys(state.pending).length);
   const guestReadOnly = collaborationMode === "guest" && (collaborationStatus !== "connected" || collaborationRole !== "editor");
+  const hostingLiveRoom = collaborationMode === "host" && collaborationStatus === "connected";
   const actorId = collaborationSelf?.id ?? "local";
   const canUndo = history.undo.some((entry) => entry.metadata?.actorId === actorId);
   const canRedo = history.redo.some((entry) => entry.metadata?.actorId === actorId);
@@ -40,8 +41,10 @@ export function TopBar({ persistence }: { persistence?: PersistenceController })
     <Tooltip className="mobile-only" side="bottom" align="start" label="Board menu" description="Board options — coming soon">{(tooltipId) => <button type="button" className="icon-button" aria-label="Board menu" aria-describedby={tooltipId}><Menu size={18} /></button>}</Tooltip>
     <div className="board-identity">
       <input key={board.name} className="board-name" aria-label="Board name" defaultValue={board.name} disabled={guestReadOnly} onBlur={(e) => rename(e.currentTarget.value)} onKeyDown={(e) => { if (e.key === "Enter") e.currentTarget.blur(); }} />
-      {/* A guest is in someone else's room, so the local board list is not theirs to switch. */}
-      {persistence && <BoardSwitcher controller={persistence} />}
+      {/* A guest is in someone else's room, so the local board list is not theirs to switch. A
+          host's room is served from the board that is open, so swapping it under a live room would
+          leave every guest on a board the host is no longer editing. */}
+      {persistence && !hostingLiveRoom && <BoardSwitcher controller={persistence} />}
     </div>
     <div className="top-actions">
       {persistence ? <PersistenceStatus controller={persistence} /> : <LiveRoomStatus />}

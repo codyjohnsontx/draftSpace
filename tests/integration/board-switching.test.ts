@@ -1,11 +1,13 @@
 import "fake-indexeddb/auto";
-import { beforeEach, describe, expect, it } from "vitest";
-import { act, renderHook, waitFor } from "@testing-library/react";
+import { createElement } from "react";
+import { beforeEach, describe, expect, it, vi } from "vitest";
+import { act, fireEvent, render, renderHook, screen, waitFor } from "@testing-library/react";
 import { deleteDB, openDB } from "idb";
+import { BoardSwitcher } from "@/components/app-shell/board-switcher";
 import { createBoard } from "@/core/board/factory";
 import type { BoardDocument } from "@/core/board/types";
 import { emptyHistory } from "@/features/history/history";
-import { useBoardPersistence } from "@/hooks/use-board-persistence";
+import { useBoardPersistence, type OpenBoardOutcome } from "@/hooks/use-board-persistence";
 import { IndexedDbBoardRepository } from "@/repositories/indexeddb-board-repository";
 import { useBoardStore } from "@/stores/board-store";
 import { usePersistenceStore } from "@/stores/persistence-store";
@@ -30,6 +32,13 @@ async function openDraftspace() {
 }
 
 const storedBoard = async (id: string) => await new IndexedDbBoardRepository().getRawById(id) as BoardDocument;
+
+/** Replaces a stored record with one no schema will parse, the way another tab damaging it would. */
+async function damage(boardId: string) {
+  const db = await openDB("draftspace", 1);
+  await db.put("boards", { id: boardId, fileFormat: "draftspace/board", schemaVersion: 3, updatedAt: new Date().toISOString(), damaged: true });
+  db.close();
+}
 
 beforeEach(async () => {
   await deleteDB("draftspace");
@@ -102,19 +111,68 @@ describe("opening a second board", () => {
   it("leaves the open board alone when the picked one can no longer be read", async () => {
     const { first, second } = await seedTwoBoards();
     const session = await openDraftspace();
-    const db = await openDB("draftspace", 1);
-    await db.put("boards", { id: second.id, fileFormat: "draftspace/board", schemaVersion: 3, updatedAt: new Date().toISOString(), damaged: true });
-    db.close();
+    await waitFor(() => expect(usePersistenceStore.getState().boards).toHaveLength(2));
+    await damage(second.id);
 
-    let opened = true;
-    await act(async () => { opened = await session.result.current.openBoard(second.id); });
-    expect(opened).toBe(false);
+    let outcome: OpenBoardOutcome = "opened";
+    await act(async () => { outcome = await session.result.current.openBoard(second.id); });
+    expect(outcome).toBe("unreadable");
     expect(useBoardStore.getState().board?.id).toBe(first.id);
     expect(localStorage.getItem(LAST_BOARD)).toBe(first.id);
     expect(usePersistenceStore.getState().status).not.toBe("recovery-required");
-    // The damaged record is never rewritten, and it drops out of the list rather than being offered again.
+    // The damaged record is never rewritten, and its row survives the pick: dropping it here is
+    // what used to close the menu over a click that did nothing. The next refresh removes it.
     expect(await storedBoard(second.id)).toMatchObject({ damaged: true });
-    await waitFor(() => expect(usePersistenceStore.getState().boards.map((board) => board.id)).toEqual([first.id]));
+    expect(usePersistenceStore.getState().boards.map((board) => board.id)).toEqual([second.id, first.id]);
     session.unmount();
+  });
+
+  it("tells the user on the row when the board they picked can no longer be read", async () => {
+    const { second } = await seedTwoBoards();
+    const session = await openDraftspace();
+    await waitFor(() => expect(usePersistenceStore.getState().boards).toHaveLength(2));
+    render(createElement(BoardSwitcher, { controller: session.result.current }));
+    await damage(second.id);
+
+    fireEvent.click(screen.getByRole("button", { name: "Open a board" }));
+    fireEvent.click(screen.getByRole("menuitemradio", { name: /Recovered copy/ }));
+    await waitFor(() => expect(screen.getByRole("menuitemradio", { name: /Recovered copy/ })).toHaveTextContent("can no longer be opened"));
+    expect(screen.getByRole("menu", { name: "Boards in this browser" })).toBeVisible();
+    session.unmount();
+  });
+
+  it("refuses to leave a board whose work storage will not take, and keeps that work", async () => {
+    const { first, second } = await seedTwoBoards();
+    const session = await openDraftspace();
+    await act(async () => { useBoardStore.getState().createShape("rectangle", { x: 10, y: 10, width: 80, height: 60 }); });
+    const update = vi.spyOn(IndexedDbBoardRepository.prototype, "update").mockRejectedValue(new Error("QuotaExceededError"));
+
+    let outcome: OpenBoardOutcome = "opened";
+    await act(async () => { outcome = await session.result.current.openBoard(second.id); });
+    expect(outcome).toBe("unsaved-work");
+    expect(update).toHaveBeenCalled();
+    // The board that was being left is still open, still holding the work, and still says so.
+    expect(useBoardStore.getState().board?.id).toBe(first.id);
+    expect(useBoardStore.getState().board?.elementIds).toHaveLength(1);
+    expect(localStorage.getItem(LAST_BOARD)).toBe(first.id);
+    expect(usePersistenceStore.getState().status).not.toBe("saved");
+    session.unmount(); update.mockRestore();
+  });
+
+  it("keeps the open board's history when storage throws during a pick", async () => {
+    const { first, second } = await seedTwoBoards();
+    const session = await openDraftspace();
+    await act(async () => { useBoardStore.getState().createShape("rectangle", { x: 10, y: 10, width: 80, height: 60 }); });
+    const undoDepth = useBoardStore.getState().history.undo.length;
+    expect(undoDepth).toBeGreaterThan(0);
+    const read = vi.spyOn(IndexedDbBoardRepository.prototype, "getRawById").mockRejectedValue(new Error("connection closed"));
+
+    let outcome: OpenBoardOutcome = "opened";
+    await act(async () => { outcome = await session.result.current.openBoard(second.id); });
+    expect(outcome).toBe("unreadable");
+    expect(useBoardStore.getState().board?.id).toBe(first.id);
+    expect(useBoardStore.getState().board?.elementIds).toHaveLength(1);
+    expect(useBoardStore.getState().history.undo).toHaveLength(undoDepth);
+    session.unmount(); read.mockRestore();
   });
 });

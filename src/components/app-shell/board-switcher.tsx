@@ -5,9 +5,15 @@ import { Check, ChevronDown } from "lucide-react";
 import type { BoardSummary } from "@/core/board/types";
 import { useBoardStore } from "@/stores/board-store";
 import { usePersistenceStore } from "@/stores/persistence-store";
-import type { PersistenceController } from "@/hooks/use-board-persistence";
+import type { OpenBoardOutcome, PersistenceController } from "@/hooks/use-board-persistence";
 
 const elementSummary = (count: number) => count === 1 ? "1 element" : `${count} elements`;
+
+/** What the row says instead of its summary when the pick left the board that was open on screen. */
+const refusedSummary: Record<Exclude<OpenBoardOutcome, "opened">, string> = {
+  "unreadable": "This board can no longer be opened from this browser.",
+  "unsaved-work": "Draftspace could not save the open board, so it stayed open.",
+};
 
 /** Enough of a timestamp to tell two boards apart, and nothing when the record has no usable one. */
 function updatedSummary(updatedAt: string) {
@@ -27,8 +33,9 @@ export function BoardSwitcher({ controller }: { controller: PersistenceControlle
   const boards = usePersistenceStore((state) => state.boards);
   const openBoardId = useBoardStore((state) => state.board?.id ?? null);
   const [open, setOpen] = useState(false);
-  // A board can stop being readable between this list being built and the user picking it.
-  const [unavailable, setUnavailable] = useState<string | null>(null);
+  // A pick can leave the board that is open on screen: the picked one stopped being readable
+  // between this list being built and the click, or the open one has work storage would not take.
+  const [refused, setRefused] = useState<{ boardId: string; outcome: Exclude<OpenBoardOutcome, "opened"> } | null>(null);
   // The menu stays up while a board opens, so a second pick must not race the first.
   const opening = useRef(false);
   const wrapRef = useRef<HTMLDivElement>(null);
@@ -43,15 +50,16 @@ export function BoardSwitcher({ controller }: { controller: PersistenceControlle
 
   if (boards.length < 2) return null;
 
-  // The menu stays up until the board is actually open, so a board that can no longer be read
-  // says so here rather than closing on a click that did nothing.
+  // The menu stays up until the board is actually open, so a pick that changed nothing says why
+  // here rather than closing on a click that did nothing.
   const choose = async (board: BoardSummary) => {
     if (board.id === openBoardId) { setOpen(false); buttonRef.current?.focus(); return; }
     if (opening.current) return;
-    opening.current = true; setUnavailable(null);
+    opening.current = true; setRefused(null);
     try {
-      if (await controller.openBoard(board.id)) { setOpen(false); buttonRef.current?.focus(); return; }
-      setUnavailable(board.id);
+      const outcome = await controller.openBoard(board.id);
+      if (outcome === "opened") { setOpen(false); buttonRef.current?.focus(); return; }
+      setRefused({ boardId: board.id, outcome });
     } finally { opening.current = false; }
   };
 
@@ -64,7 +72,7 @@ export function BoardSwitcher({ controller }: { controller: PersistenceControlle
     const next = event.key === "Home" ? 0 : event.key === "End" ? items.length - 1 : event.key === "ArrowDown" ? (current + 1) % items.length : (current <= 0 ? items.length : current) - 1;
     items[next]?.focus();
   }}>
-    <button ref={buttonRef} type="button" className="board-switcher-trigger" aria-label="Open a board" aria-haspopup="menu" aria-expanded={open} aria-controls="board-switcher-menu" onClick={() => { setOpen((value) => !value); setUnavailable(null); }}>
+    <button ref={buttonRef} type="button" className="board-switcher-trigger" aria-label="Open a board" aria-haspopup="menu" aria-expanded={open} aria-controls="board-switcher-menu" onClick={() => { setOpen((value) => !value); setRefused(null); }}>
       <ChevronDown size={15} aria-hidden="true" />
     </button>
     {open && <div className="board-switcher-popover" id="board-switcher-menu" role="menu" aria-label="Boards in this browser">
@@ -72,7 +80,7 @@ export function BoardSwitcher({ controller }: { controller: PersistenceControlle
       {boards.map((board) => {
         const updated = updatedSummary(board.updatedAt);
         return <button key={board.id} type="button" role="menuitemradio" aria-checked={board.id === openBoardId} className="board-switcher-option" onClick={() => void choose(board)}>
-          <span><strong>{board.name.trim() || "Untitled board"}</strong><small>{board.id === unavailable ? "This board can no longer be opened from this browser." : `${elementSummary(board.elementCount)}${updated ? ` · ${updated}` : ""}`}</small></span>
+          <span><strong>{board.name.trim() || "Untitled board"}</strong><small>{refused?.boardId === board.id ? refusedSummary[refused.outcome] : `${elementSummary(board.elementCount)}${updated ? ` · ${updated}` : ""}`}</small></span>
           {board.id === openBoardId && <Check size={16} className="mode-check" aria-hidden="true" />}
         </button>;
       })}

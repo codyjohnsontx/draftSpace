@@ -20,12 +20,17 @@ const finishBackup = (result: BackupResult) => {
   if (!download.ok) usePersistenceStore.getState().setError(download.error);
 };
 
+/**
+ * Whether a picked board is now the open one, and when it is not, which board stood in the way:
+ * the picked one could not be read, or the open one still holds work storage would not take.
+ */
+export type OpenBoardOutcome = "opened" | "unreadable" | "unsaved-work";
+
 export type PersistenceController = {
   retrySave: () => Promise<void>;
   retryStorage: () => Promise<void>;
   startNewBoard: () => Promise<void>;
-  /** Resolves to whether that board is now the open one. */
-  openBoard: (boardId: string) => Promise<boolean>;
+  openBoard: (boardId: string) => Promise<OpenBoardOutcome>;
   downloadRecovery: () => Promise<void>;
   downloadCurrentBackup: () => Promise<void>;
 };
@@ -69,10 +74,13 @@ export function useBoardPersistence(): PersistenceController {
     useBoardStore.getState().persistViewport(useViewportStore.getState().viewport);
   }, []);
 
+  /** A board that is already open is left exactly as it is: `setBoard` would drop its history. */
   const enterSessionOnly = useCallback((error: unknown) => {
-    const board = useBoardStore.getState().board ?? createBoard("Temporary draft");
-    useBoardStore.getState().setBoard(board);
-    useViewportStore.getState().setViewport(board.viewport);
+    if (!useBoardStore.getState().board) {
+      const board = createBoard("Temporary draft");
+      useBoardStore.getState().setBoard(board);
+      useViewportStore.getState().setViewport(board.viewport);
+    }
     usePersistenceStore.getState().enterSessionOnly(normalizePersistenceError(error, "read"));
   }, []);
 
@@ -186,26 +194,29 @@ export function useBoardPersistence(): PersistenceController {
   }, [drainCoordinator, enterSessionOnly, repository, startCoordinator]);
 
   /**
-   * Opens another stored board in place. The board being left is flushed first: whatever is still
-   * inside the autosave debounce belongs to it, and once its coordinator is drained nothing else
-   * will ever write it.
+   * Opens another stored board in place. The board being left is settled first: whatever is still
+   * inside the autosave debounce, or still waiting out a retry, belongs to it, and once its
+   * coordinator is drained nothing else will ever write it. Work storage will not take holds the
+   * switch back rather than being discarded behind a menu that reported success.
    */
-  const openBoard = useCallback(async (boardId: string) => {
-    if (useBoardStore.getState().board?.id === boardId) return true;
+  const openBoard = useCallback(async (boardId: string): Promise<OpenBoardOutcome> => {
+    if (useBoardStore.getState().board?.id === boardId) return "opened";
     const persistence = usePersistenceStore.getState();
     try {
       // Read the target before letting go of the open board. The list only offers boards that
       // parsed, so an unreadable one here means another tab changed it; leaving the open board
-      // untouched beats stranding it on a recovery screen it did not cause.
+      // untouched beats stranding it on a recovery screen it did not cause. The list keeps the
+      // row so the menu can say so, rather than dropping it and closing over a click that did
+      // nothing; the next refresh picks the removal up.
       const result = loadBoardDocument(boardId, await repository.getRawById(boardId));
-      if (result.kind !== "ready") { await refreshBoards(); return false; }
-      persistence.markLoading();
+      if (result.kind !== "ready") return "unreadable";
       flushViewport();
-      await coordinator.current?.flush("manual");
+      if (coordinator.current && !(await coordinator.current.settle())) return "unsaved-work";
+      persistence.markLoading();
       await drainCoordinator();
       useBoardStore.getState().setBoard(result.board);
       // Selection and history belong to the board that was open, not to this one.
-      useSessionStore.getState().setSelected([]); useSessionStore.getState().setSelectedConnectors([]);
+      useSessionStore.getState().setSelected([]);
       useViewportStore.getState().setViewport(result.board.preferences.restoreViewport ? result.board.viewport : { x: 0, y: 0, zoom: 1 });
       localStorage.setItem(LAST_BOARD, result.board.id);
       if (result.migrated) await repository.update(result.board);
@@ -214,9 +225,9 @@ export function useBoardPersistence(): PersistenceController {
       // An edit made while the swap was still awaiting storage has no coordinator to schedule it.
       const latestRevision = useBoardStore.getState().revision;
       if (latestRevision > 0) activeCoordinator.schedule(latestRevision);
-      return true;
-    } catch (error) { console.error("Draftspace could not open that board", error); enterSessionOnly(error); return false; }
-  }, [drainCoordinator, enterSessionOnly, flushViewport, refreshBoards, repository, startCoordinator]);
+      return "opened";
+    } catch (error) { console.error("Draftspace could not open that board", error); enterSessionOnly(error); return "unreadable"; }
+  }, [drainCoordinator, enterSessionOnly, flushViewport, repository, startCoordinator]);
 
   const downloadRecovery = useCallback(async () => {
     const recovery = usePersistenceStore.getState().recovery; if (!recovery) return;

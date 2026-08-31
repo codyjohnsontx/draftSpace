@@ -42,6 +42,25 @@ describe("autosave coordinator", () => {
     vi.useFakeTimers(); const update = vi.fn().mockRejectedValueOnce(new Error("nope")).mockResolvedValue(undefined); const test = setup(update, []);
     await test.coordinator.flush("manual"); expect(test.events.at(-1)?.type).toBe("failed"); await test.coordinator.retry(); expect(test.events.at(-1)?.type).toBe("saved");
   });
+  it("settles debounced work for a caller about to let the board go", async () => {
+    vi.useFakeTimers(); const test = setup(); test.coordinator.schedule(1);
+    await expect(test.coordinator.settle()).resolves.toBe(true);
+    expect(test.update).toHaveBeenCalledTimes(1);
+    await vi.advanceTimersByTimeAsync(500); expect(test.update).toHaveBeenCalledTimes(1);
+  });
+  it("settling attempts a retry that is still waiting out its backoff", async () => {
+    vi.useFakeTimers(); const update = vi.fn().mockRejectedValueOnce(new Error("nope")).mockResolvedValue(undefined); const test = setup(update);
+    test.coordinator.schedule(1); await vi.advanceTimersByTimeAsync(500); expect(update).toHaveBeenCalledTimes(1);
+    await expect(test.coordinator.settle()).resolves.toBe(true);
+    expect(update).toHaveBeenCalledTimes(2);
+  });
+  it("reports work storage would not take rather than reporting success", async () => {
+    vi.useFakeTimers(); const update = vi.fn(async () => { throw new Error("nope"); }); const test = setup(update);
+    test.coordinator.schedule(1); await vi.advanceTimersByTimeAsync(500);
+    await expect(test.coordinator.settle()).resolves.toBe(false);
+    // The coordinator keeps the work, so its own backoff is still free to land it.
+    await vi.advanceTimersByTimeAsync(1000); expect(update).toHaveBeenCalledTimes(3);
+  });
   it("disposal clears scheduled work", async () => {
     vi.useFakeTimers(); const test = setup(); test.coordinator.schedule(1); test.coordinator.dispose(); await vi.advanceTimersByTimeAsync(1000); expect(test.update).not.toHaveBeenCalled();
   });

@@ -5,9 +5,9 @@ import { createBoard } from "@/core/board/factory";
 import type { BoardSummary } from "@/core/board/types";
 import { useBoardStore } from "@/stores/board-store";
 import { usePersistenceStore } from "@/stores/persistence-store";
-import type { PersistenceController } from "@/hooks/use-board-persistence";
+import type { OpenBoardOutcome, PersistenceController } from "@/hooks/use-board-persistence";
 
-const controller = (opened = true): PersistenceController => ({ retrySave: vi.fn(), retryStorage: vi.fn(), startNewBoard: vi.fn(), openBoard: vi.fn().mockResolvedValue(opened), downloadRecovery: vi.fn(), downloadCurrentBackup: vi.fn() });
+const controller = (outcome: OpenBoardOutcome = "opened"): PersistenceController => ({ retrySave: vi.fn(), retryStorage: vi.fn(), startNewBoard: vi.fn(), openBoard: vi.fn().mockResolvedValue(outcome), downloadRecovery: vi.fn(), downloadCurrentBackup: vi.fn() });
 
 const open = createBoard("Payments architecture");
 const summary = (id: string, name: string, elementCount = 0): BoardSummary => ({ id, name, createdAt: "2026-08-01T10:00:00.000Z", updatedAt: "2026-08-02T10:00:00.000Z", elementCount });
@@ -46,7 +46,7 @@ describe("board switcher", () => {
   });
 
   it("says so on the row rather than closing on a click that opened nothing", async () => {
-    const actions = controller(false); render(<BoardSwitcher controller={actions} />);
+    const actions = controller("unreadable"); render(<BoardSwitcher controller={actions} />);
     fireEvent.click(screen.getByRole("button", { name: "Open a board" }));
     fireEvent.click(screen.getByRole("menuitemradio", { name: /Recovered copy/ }));
     await waitFor(() => expect(screen.getByRole("menuitemradio", { name: /Recovered copy/ })).toHaveTextContent("can no longer be opened"));
@@ -54,17 +54,26 @@ describe("board switcher", () => {
     expect(screen.getByRole("menuitemradio", { name: /Payments architecture/ })).toHaveAttribute("aria-checked", "true");
   });
 
+  it("names the open board as the reason when its work could not be saved", async () => {
+    const actions = controller("unsaved-work"); render(<BoardSwitcher controller={actions} />);
+    fireEvent.click(screen.getByRole("button", { name: "Open a board" }));
+    fireEvent.click(screen.getByRole("menuitemradio", { name: /Recovered copy/ }));
+    await waitFor(() => expect(screen.getByRole("menuitemradio", { name: /Recovered copy/ })).toHaveTextContent("could not save the open board"));
+    expect(screen.getByRole("menu", { name: "Boards in this browser" })).toBeVisible();
+    expect(screen.getByRole("menuitemradio", { name: /Payments architecture/ })).toHaveAttribute("aria-checked", "true");
+  });
+
   it("ignores a second pick while a board is still opening", async () => {
     const actions = controller();
-    let release: (opened: boolean) => void = () => {};
-    actions.openBoard = vi.fn().mockReturnValue(new Promise<boolean>((resolve) => { release = resolve; }));
+    let release: (outcome: OpenBoardOutcome) => void = () => {};
+    actions.openBoard = vi.fn().mockReturnValue(new Promise<OpenBoardOutcome>((resolve) => { release = resolve; }));
     usePersistenceStore.setState({ boards: [summary(open.id, open.name), other, summary("third", "Third board")] });
     render(<BoardSwitcher controller={actions} />);
     fireEvent.click(screen.getByRole("button", { name: "Open a board" }));
     fireEvent.click(screen.getByRole("menuitemradio", { name: /Recovered copy/ }));
     fireEvent.click(screen.getByRole("menuitemradio", { name: /Third board/ }));
     expect(actions.openBoard).toHaveBeenCalledExactlyOnceWith("recovered");
-    release(true);
+    release("opened");
     await waitFor(() => expect(screen.queryByRole("menu", { name: "Boards in this browser" })).not.toBeInTheDocument());
   });
 
