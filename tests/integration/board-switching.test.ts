@@ -201,6 +201,30 @@ describe("opening a second board", () => {
     session.unmount(); read.mockRestore();
   });
 
+  it("does not give up on storage when only reading the picked board failed", async () => {
+    const { first, second } = await seedTwoBoards();
+    const session = await openDraftspace();
+    await act(async () => { useBoardStore.getState().createShape("rectangle", { x: 10, y: 10, width: 80, height: 60 }); });
+    const read = vi.spyOn(IndexedDbBoardRepository.prototype, "getRawById").mockRejectedValue(new Error("UnknownError"));
+
+    let outcome: OpenBoardOutcome = "opened";
+    await act(async () => { outcome = await session.result.current.openBoard(second.id); });
+    read.mockRestore();
+    expect(outcome).toBe("unreadable");
+    // Nothing was asked of the open board, so nothing about it changed: its autosave is still the
+    // one running, and a transient read is no reason to warn that the tab has stopped saving.
+    expect(useBoardStore.getState().board?.id).toBe(first.id);
+    expect(useBoardStore.getState().board?.elementIds).toHaveLength(1);
+    expect(usePersistenceStore.getState().status).not.toBe("session-only");
+
+    // And the switcher still works: one such read must not refuse every later pick as unsaved work.
+    await act(async () => { outcome = await session.result.current.openBoard(second.id); });
+    expect(outcome).toBe("opened");
+    expect(useBoardStore.getState().board?.id).toBe(second.id);
+    expect((await storedBoard(first.id)).elementIds).toHaveLength(1);
+    session.unmount();
+  });
+
   it("does not claim the picked board is unopenable when it is already on screen", async () => {
     const { second } = await seedTwoBoards();
     const session = await openDraftspace();

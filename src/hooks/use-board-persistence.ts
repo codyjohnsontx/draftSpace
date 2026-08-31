@@ -239,10 +239,14 @@ export function useBoardPersistence(): PersistenceController {
       return "opened";
     } catch (error) {
       console.error("Draftspace could not open that board", error);
+      // Only a throw once the swap has happened is evidence about storage this session depends on:
+      // the picked board is on screen with its predecessor's coordinator already drained, so the
+      // row must not also claim it could not be opened and the session-only status is what has
+      // something left to say. Before the swap the open board and its autosave are untouched, so
+      // reading the picked one is the only thing that failed, and the row already reports that.
+      if (useBoardStore.getState().board?.id !== boardId) return "unreadable";
       enterSessionOnly(error);
-      // A throw after the swap leaves the picked board on screen, so the row must not also claim
-      // it could not be opened; the session-only status is what has something left to say.
-      return useBoardStore.getState().board?.id === boardId ? "opened" : "unreadable";
+      return "opened";
     }
   }, [drainCoordinator, enterSessionOnly, flushViewport, repository, settleOpenBoard, startCoordinator]);
 
