@@ -22,10 +22,14 @@ async function openBoardMenu(page: Page, browserName: string) {
 const storedBoards = (page: Page) => page.evaluate(async () => new Promise<{ id: string; name: string; elements: number }[]>((resolve, reject) => {
   const request = indexedDB.open("draftspace");
   request.onerror = () => reject(request.error);
+  // Opening without a version creates the database when it is absent, and an empty one at version 1
+  // would stop the app's own upgrade from ever running its object store. Abort the version-change
+  // transaction so reading the boards can never be what leaves this origin without them.
+  request.onupgradeneeded = () => request.transaction?.abort();
   request.onsuccess = () => {
     const db = request.result;
-    // Opening without a version creates the database when it is absent, so the store can be
-    // missing and `transaction` throws here. Reject, or the poll below just waits out its timeout.
+    // The store can also be missing on a database this did not create, and `transaction` throws
+    // here when it is. Reject, or the poll below just waits out its timeout.
     try {
       const all = db.transaction("boards").objectStore("boards").getAll();
       all.onsuccess = () => { db.close(); resolve(all.result.map((doc) => ({ id: doc.id, name: doc.name, elements: doc.elementIds.length }))); };
