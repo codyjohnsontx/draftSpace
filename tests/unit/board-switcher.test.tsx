@@ -73,6 +73,29 @@ describe("board switcher", () => {
     await waitFor(() => expect(screen.getByRole("status")).toHaveTextContent("This board can no longer be opened from this browser."));
   });
 
+  it("keeps no refusal in the live region once the menu is dismissed", async () => {
+    const actions = controller("unreadable"); render(<BoardSwitcher controller={actions} />);
+    const trigger = screen.getByRole("button", { name: "Open a board" });
+    const refuse = async () => {
+      fireEvent.click(trigger);
+      fireEvent.click(screen.getByRole("menuitemradio", { name: /Recovered copy/ }));
+      await waitFor(() => expect(screen.getByRole("status")).toHaveTextContent("This board can no longer be opened from this browser."));
+    };
+
+    await refuse();
+    fireEvent.keyDown(screen.getByRole("menu", { name: "Boards in this browser" }), { key: "Escape" });
+    expect(screen.getByRole("status")).toBeEmptyDOMElement();
+
+    await refuse();
+    fireEvent.pointerDown(document.body);
+    expect(screen.queryByRole("menu", { name: "Boards in this browser" })).not.toBeInTheDocument();
+    expect(screen.getByRole("status")).toBeEmptyDOMElement();
+
+    await refuse();
+    fireEvent.click(trigger);
+    expect(screen.getByRole("status")).toBeEmptyDOMElement();
+  });
+
   it("names the open board as the reason when its work could not be saved", async () => {
     const actions = controller("unsaved-work"); render(<BoardSwitcher controller={actions} />);
     fireEvent.click(screen.getByRole("button", { name: "Open a board" }));

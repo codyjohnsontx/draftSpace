@@ -88,6 +88,6 @@ export function BoardSwitcher({ controller }: { controller: PersistenceControlle
     {/* Swapping the row's own text does not re-announce a control the reader is already on, so the
         refusal is spoken from here. It sits outside the menu, which admits no such child, and it is
         never mounted with its text: a live region that arrives already speaking announces nothing. */}
-    <div className="sr-only" role="status">{refused ? refusedSummary[refused.outcome] : ""}</div>
+    <div className="sr-only" role="status">{open && refused ? refusedSummary[refused.outcome] : ""}</div>
   </div>;
 }
