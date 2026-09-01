@@ -18,7 +18,13 @@ export type StoredBoardStamp = { boardId: string; updatedAt: string };
  * or one whose claim broke mid-handover - can only let its board go if the answer is yes.
  *
  * `updatedAt` is the whole test here too, because every document mutation stamps it, so a draft
- * still carrying the stamped one is a draft nothing has changed since the write.
+ * still carrying the stamped one is a draft nothing has changed since the write. That is one
+ * currency for one fact rather than two, which is the point; it is not a claim that a timestamp
+ * cannot collide. Two mutations inside one clock tick share an `updatedAt`, and reaching it here
+ * needs the second to land in the same millisecond as the one that was written, with a storage
+ * round-trip in between - a sub-millisecond window judged not worth a second mechanism, not one
+ * that cannot exist. Whether `revision` is the better currency is issue #20, and it moves both
+ * this and `storedRecordMovedOn` or neither.
  */
 export function draftIsStored(board: { id: string; updatedAt: string }, stamp: StoredBoardStamp | null): boolean {
   if (!stamp || stamp.boardId !== board.id) return false;
