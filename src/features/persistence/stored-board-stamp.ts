@@ -11,6 +11,20 @@
  */
 export type StoredBoardStamp = { boardId: string; updatedAt: string };
 
+/**
+ * Whether this tab's copy of a board is the record storage holds, which is the other question
+ * the same stamp answers: not "has someone else moved the record on" but "is there anything here
+ * storage has not got". A tab with no coordinator left to write - one that gave up on storage,
+ * or one whose claim broke mid-handover - can only let its board go if the answer is yes.
+ *
+ * `updatedAt` is the whole test here too, because every document mutation stamps it, so a draft
+ * still carrying the stamped one is a draft nothing has changed since the write.
+ */
+export function draftIsStored(board: { id: string; updatedAt: string }, stamp: StoredBoardStamp | null): boolean {
+  if (!stamp || stamp.boardId !== board.id) return false;
+  return board.updatedAt === stamp.updatedAt;
+}
+
 export function storedRecordMovedOn(existing: unknown, boardId: string, stamp: StoredBoardStamp | null): boolean {
   if (existing === null || existing === undefined) return false;
   // No stamp for this board means this tab never saw a stored record for it, so whatever is

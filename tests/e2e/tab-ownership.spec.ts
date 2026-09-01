@@ -113,6 +113,24 @@ const failLockRequestsAfter = (page: Page, calls: number) => page.addInitScript(
   });
 }, calls);
 
+/**
+ * Breaks only the nth lock request, so one claim fails mid-handover and every later one succeeds.
+ * A page reload re-runs this script, so the count restarts with the reloaded page's own claims.
+ */
+const failOneLockRequest = (page: Page, nth: number) => page.addInitScript((target: number) => {
+  const locks = navigator.locks;
+  if (typeof locks?.request !== "function") return;
+  const request = locks.request.bind(locks) as (...args: unknown[]) => Promise<unknown>;
+  let seen = 0;
+  Object.defineProperty(navigator, "locks", {
+    configurable: true,
+    value: { request: (...args: unknown[]) => {
+      if (++seen === target) throw new DOMException("Draftspace test broke this claim", "NotSupportedError");
+      return request(...args);
+    } },
+  });
+}, nth);
+
 type StoredBoard = { id: string; name: string; shapes: Array<{ x: number; y: number }> };
 
 /** Every board in storage, not just the last-opened one, so a second record cannot hide. */
@@ -343,6 +361,15 @@ async function switchToBoard(page: Page, browserName: string, name: string) {
   await activate(browserName, page.getByRole("menuitemradio", { name: new RegExp(name) }));
 }
 
+/**
+ * Puts the menu away by toggling the control that opened it. Escape closes it only for a reader
+ * whose focus is inside it, and neither Firefox's synthetic click nor WebKit's button click leaves
+ * focus on the row, so a test that pressed Escape left the menu up and toggled it shut on the next
+ * pick instead of opening it.
+ */
+const closeBoardMenu = (page: Page, browserName: string) =>
+  activate(browserName, page.getByRole("button", { name: "Open a board" }));
+
 /** Leaves a second board behind the way a user gets one, then opens a fresh one beside it. */
 async function startASecondBoard(page: Page, name: string) {
   await page.evaluate(() => localStorage.removeItem("draftspace:last-board"));
@@ -438,4 +465,75 @@ test("does not strand a tab when the claim on the board it is switching to fails
   await expect(page.getByRole("main", { name: "Draftspace infinite canvas" })).not.toHaveAttribute("data-readonly");
   await drawRectangle(page, 700, 200, 840, 300);
   await expect(page.getByRole("main", { name: "Draftspace infinite canvas" })).toHaveAttribute("data-element-count", "1");
+});
+
+/**
+ * Getting into the failed-handover state as a user does: two boards, work on the open one, and a
+ * switch whose claim breaks after the outgoing board has already been let go.
+ */
+async function afterAFailedHandover(page: Page, browserName: string) {
+  await failOneLockRequest(page, 2);
+  await openBoard(page);
+  await boardName(page).fill("First board"); await boardName(page).press("Enter");
+  await drawRectangle(page, 200, 200, 340, 300);
+  await startASecondBoard(page, "Second board");
+  await drawRectangle(page, 600, 200, 740, 300);
+
+  await switchToBoard(page, browserName, "First board");
+  await expect(page.getByRole("menuitemradio", { name: /First board/ })).toContainText("could not open this board");
+  await closeBoardMenu(page, browserName);
+  await expect(page.getByRole("menu", { name: "Boards in this browser" })).toBeHidden();
+  await expect(saveStatus(page)).toHaveText("Not saving");
+}
+
+/**
+ * The stamp of the record this tab agrees with was not refreshed by autosave, so the storage retry
+ * compared this tab's own last write against something older, read it as another tab's work, and
+ * took the fork path meant for a genuine conflict. The user was left with two boards where they
+ * had one, and no way to tell which was which.
+ */
+test("a storage retry after a failed handover saves the board it is on rather than a second copy", async ({ browserName, page }) => {
+  await afterAFailedHandover(page, browserName);
+
+  // Work only this tab is holding now, which is what "Retry storage" exists to keep.
+  await drawRectangle(page, 900, 200, 1040, 300);
+  await retryStorage(page, browserName);
+  await expect(saveStatus(page)).toHaveText("Saved locally");
+
+  // Still the board the user was on, saved where it was, with nothing new beside it.
+  await expect(boardName(page)).toHaveValue("Second board");
+  const boards = await storedBoards(page);
+  expect(boards.map((board) => board.name).sort()).toEqual(["First board", "Second board"]);
+  expect(boards.find((board) => board.name === "Second board")?.shapes).toEqual([{ x: 600, y: 200 }, { x: 900, y: 200 }]);
+});
+
+/**
+ * And the switcher is not dead in that state. The switch that broke settled this board on its way
+ * out, so there is nothing here storage has not got and picking again abandons nothing - which is
+ * what made the storage retry, and the fork above, the only way out.
+ */
+test("a tab whose claim broke mid-switch can pick a board again", async ({ browserName, page }) => {
+  await afterAFailedHandover(page, browserName);
+
+  await switchToBoard(page, browserName, "First board");
+  await expect(boardName(page)).toHaveValue("First board");
+  await expect(saveStatus(page)).toHaveText("Saved locally");
+  await expect(page.getByRole("menu", { name: "Boards in this browser" })).toBeHidden();
+  // The board it left kept the work it was holding rather than being abandoned on the way.
+  const boards = await storedBoards(page);
+  expect(boards.find((board) => board.name === "Second board")?.shapes).toEqual([{ x: 600, y: 200 }]);
+});
+
+/** When there really is work nothing will write, the pick is refused and the row names the way out. */
+test("a tab holding work nothing will write is told why the switcher cannot move it", async ({ browserName, page }) => {
+  await afterAFailedHandover(page, browserName);
+  await drawRectangle(page, 900, 200, 1040, 300);
+
+  await switchToBoard(page, browserName, "First board");
+  const refusedRow = page.getByRole("menuitemradio", { name: /First board/ });
+  await expect(refusedRow).toContainText("not saving the open board");
+  await expect(refusedRow).toContainText("Retry storage first");
+  await expect(page.getByRole("menu", { name: "Boards in this browser" })).toBeVisible();
+  await expect(boardName(page)).toHaveValue("Second board");
+  await expect(page.getByRole("main", { name: "Draftspace infinite canvas" })).toHaveAttribute("data-element-count", "2");
 });

@@ -13,6 +13,9 @@ const elementSummary = (count: number) => count === 1 ? "1 element" : `${count} 
 const refusedSummary: Record<Exclude<OpenBoardOutcome, "opened">, string> = {
   "unreadable": "This board can no longer be opened from this browser.",
   "unsaved-work": "Draftspace could not save the open board, so it stayed open.",
+  // The same refusal, but nothing tried and failed here: this tab has given up on storage, so the
+  // row names the way back rather than leaving the pick looking like it was ignored.
+  "not-saving": "Draftspace is not saving the open board, so switching would lose the changes it is holding. Retry storage first.",
   // Both halves, because the second one is invisible: the board the user is still looking at was
   // let go on the way here, so it is no longer being saved and nothing else on screen says so.
   "handover-failed": "Draftspace could not open this board, and the board still on screen is no longer being saved.",

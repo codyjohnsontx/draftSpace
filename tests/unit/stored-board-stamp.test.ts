@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { storedRecordMovedOn } from "@/features/persistence/stored-board-stamp";
+import { draftIsStored, storedRecordMovedOn } from "@/features/persistence/stored-board-stamp";
 
 const stored = (updatedAt: string) => ({ id: "board-1", updatedAt });
 const stamp = (updatedAt: string) => ({ boardId: "board-1", updatedAt });
@@ -27,5 +27,18 @@ describe("stored board stamp", () => {
   it("treats a record it cannot read a stamp from as someone else's", () => {
     expect(storedRecordMovedOn({ id: "board-1" }, "board-1", stamp("2026-01-01T00:00:00.000Z"))).toBe(true);
     expect(storedRecordMovedOn("nonsense", "board-1", stamp("2026-01-01T00:00:00.000Z"))).toBe(true);
+  });
+
+  it("says a draft nothing has changed since the write is one storage holds", () => {
+    expect(draftIsStored(stored("2026-01-01T00:00:00.000Z"), stamp("2026-01-01T00:00:00.000Z"))).toBe(true);
+  });
+
+  it("says a draft edited since the write is not", () => {
+    expect(draftIsStored(stored("2026-01-01T00:05:00.000Z"), stamp("2026-01-01T00:00:00.000Z"))).toBe(false);
+  });
+
+  it("says a draft storage has never seen is not, whatever its stamp", () => {
+    expect(draftIsStored(stored("2026-01-01T00:00:00.000Z"), null)).toBe(false);
+    expect(draftIsStored(stored("2026-01-01T00:00:00.000Z"), { boardId: "board-2", updatedAt: "2026-01-01T00:00:00.000Z" })).toBe(false);
   });
 });
