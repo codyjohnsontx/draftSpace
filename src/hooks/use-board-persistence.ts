@@ -316,9 +316,15 @@ export function useBoardPersistence(): PersistenceController {
     // committed to the document being replaced and then thrown away by a later setBoard, with the
     // status reporting it saved. Swapping first leaves it on the copy, where the revision this
     // write stands at is read and the tail below has something to schedule.
-    useBoardStore.getState().setBoard(copy); rememberStored(copy);
+    useBoardStore.getState().setBoard(copy);
     const savedRevision = useBoardStore.getState().revision;
     await repository.create(copy);
+    // The stamp only ever names a record storage accepted, so it goes after the write and not with
+    // the setBoard above: a create that throws leaves this tab session-only holding a copy nothing
+    // has, and a stamp taken early would tell the switcher that draft was safe to abandon. Stamping
+    // the copy rather than the store's board is right here - a shape drawn during the write leaves
+    // the board ahead of the stamp, which is what the reschedule below is for.
+    rememberStored(copy);
     // Only once the copy exists may it be what this browser opens next: a pointer to a board that
     // was never written would send the next cold start to a board that is not there.
     localStorage.setItem(LAST_BOARD, copy.id);

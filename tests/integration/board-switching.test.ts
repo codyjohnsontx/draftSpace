@@ -302,6 +302,47 @@ describe("opening a second board", () => {
   });
 
   /**
+   * The write is the only thing that can say the copy exists, so the stamp waits for it. Recording
+   * the copy as stored alongside the setBoard that puts it on screen told the switcher that a draft
+   * storage had just refused was one it already held, and the next pick discarded it - the work the
+   * rescue exists to keep, thrown away without a refusal, out of the path that exists to save it.
+   */
+  it("refuses to leave a rescued copy storage would not take", async () => {
+    const repository = new IndexedDbBoardRepository();
+    const { first, second } = await seedTwoBoards();
+    const session = await openDraftspace();
+
+    // Another tab advanced the stored record, which is what sends the retry to a copy rather than
+    // letting it write over work this tab never saw.
+    await repository.update({ ...first, name: "Advanced elsewhere", updatedAt: new Date(Date.now() + 5000).toISOString() });
+
+    // Work only this tab is holding, and no autosave that can take it.
+    const update = vi.spyOn(IndexedDbBoardRepository.prototype, "update").mockRejectedValue(new Error("QuotaExceededError"));
+    await draw(200);
+
+    // Storage has no room for the copy either, which is the failure the rescue path exists for.
+    const create = vi.spyOn(IndexedDbBoardRepository.prototype, "create").mockRejectedValue(new Error("QuotaExceededError"));
+    await act(async () => { await session.result.current.retryStorage(); });
+
+    const copy = useBoardStore.getState().board!;
+    expect(copy.id).not.toBe(first.id);
+    expect(copy.name).toBe("Original board (recovered copy)");
+    expect(copy.elementIds).toHaveLength(1);
+    expect(usePersistenceStore.getState().status).toBe("session-only");
+    // The copy is in this tab and nowhere else: storage was asked for it and refused.
+    expect(await repository.list()).toHaveLength(2);
+
+    let outcome: OpenBoardOutcome = "opened";
+    await act(async () => { outcome = await session.result.current.openBoard(second.id); });
+    expect(outcome).toBe("not-saving");
+    // The copy is still on screen with its work, rather than abandoned behind a switch.
+    expect(useBoardStore.getState().board?.id).toBe(copy.id);
+    expect(useBoardStore.getState().board?.elementIds).toHaveLength(1);
+    expect(localStorage.getItem(LAST_BOARD)).toBe(first.id);
+    session.unmount(); create.mockRestore(); update.mockRestore();
+  });
+
+  /**
    * `markSaved` deliberately preserves a notice, so nothing else retires it and a new board has to
    * do it itself. Without that, the "Saved as a copy" panel goes on naming - and offering a backup
    * of - a board that is no longer the one on screen.
