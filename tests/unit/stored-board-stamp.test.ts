@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { draftIsStored, storedRecordMovedOn } from "@/features/persistence/stored-board-stamp";
+import { draftIsStored, NO_STATE_ID, storedRecordMovedOn } from "@/features/persistence/stored-board-stamp";
 
 const stored = (stateId: string) => ({ id: "board-1", stateId });
 const stamp = (stateId: string) => ({ boardId: "board-1", stateId });
@@ -24,9 +24,20 @@ describe("stored board stamp", () => {
     expect(storedRecordMovedOn(stored("state-b"), "board-1", { boardId: "board-2", stateId: "state-b" })).toBe(true);
   });
 
-  it("treats a record it cannot read a stamp from as someone else's", () => {
+  it("reads a record stored before stateId existed as the record the stamp for it names", () => {
+    // Nothing rewrites a v3 record that only wants defaults, so it sits in storage without the
+    // field while the document it parses to carries the sentinel. The two must agree, or every
+    // board stored before this field reads as another tab's work and the retry forks a copy.
+    expect(storedRecordMovedOn({ id: "board-1" }, "board-1", stamp(NO_STATE_ID))).toBe(false);
+    // And a write by another tab on that same board still moves it on.
+    expect(storedRecordMovedOn(stored("state-b"), "board-1", stamp(NO_STATE_ID))).toBe(true);
     expect(storedRecordMovedOn({ id: "board-1" }, "board-1", stamp("state-a"))).toBe(true);
+  });
+
+  it("treats a record it cannot read a stamp from as someone else's", () => {
     expect(storedRecordMovedOn("nonsense", "board-1", stamp("state-a"))).toBe(true);
+    expect(storedRecordMovedOn("nonsense", "board-1", stamp(NO_STATE_ID))).toBe(true);
+    expect(storedRecordMovedOn([], "board-1", stamp(NO_STATE_ID))).toBe(true);
   });
 
   it("says a draft nothing has changed since the write is one storage holds", () => {

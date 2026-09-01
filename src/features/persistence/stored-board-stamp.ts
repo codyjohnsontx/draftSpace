@@ -20,6 +20,17 @@
  */
 export type StoredBoardStamp = { boardId: string; stateId: string };
 
+/**
+ * The `stateId` a document stored before the field existed parses to. The schema defaults to it
+ * and a raw record carrying no field reads as it, so the parsed document and the record it was
+ * read from speak one currency; two definitions of "no stateId" would report every board stored
+ * before the field as another tab's work.
+ */
+export const NO_STATE_ID = "pre-state-id";
+
+/** The stateId of a record read back unparsed, in the currency a parsed document stamps with. */
+const storedStateId = (existing: object): unknown => (existing as { stateId?: unknown }).stateId ?? NO_STATE_ID;
+
 export const boardStamp = (board: { id: string; stateId: string }): StoredBoardStamp =>
   ({ boardId: board.id, stateId: board.stateId });
 
@@ -29,7 +40,9 @@ export function storedRecordMovedOn(existing: unknown, boardId: string, stamp: S
   // No stamp for this board means this tab never saw a stored record for it, so whatever is
   // there was put there by someone else.
   if (!stamp || stamp.boardId !== boardId) return true;
-  return (existing as { stateId?: unknown }).stateId !== stamp.stateId;
+  // Anything that is not a document is not a record this tab agreed with.
+  if (typeof existing !== "object" || Array.isArray(existing)) return true;
+  return storedStateId(existing) !== stamp.stateId;
 }
 
 /**

@@ -74,6 +74,22 @@ async function intoTheFailedHandover(session: Awaited<ReturnType<typeof openDraf
 /** One shape, the way a user's hand puts work on the board that only this tab is holding. */
 const draw = (x: number) => act(async () => { useBoardStore.getState().createShape("rectangle", { x, y: 10, width: 80, height: 60 }); });
 
+/**
+ * A record stored before documents carried a `stateId`, written raw the way it sits in a browser
+ * that has been open since before the field existed. `createBoard` always sets one now, and
+ * nothing rewrites a v3 record that only wants defaults, so the only way to get one is to take
+ * the field back out and put the object in storage unparsed.
+ */
+async function seedLegacyBoard(name: string): Promise<BoardDocument> {
+  const board = createBoard(name);
+  const legacy: Record<string, unknown> = { ...board };
+  delete legacy.stateId;
+  const db = await openDB("draftspace", 1);
+  await db.put("boards", legacy);
+  db.close();
+  return board;
+}
+
 /** Replaces a stored record with one no schema will parse, the way another tab damaging it would. */
 async function damage(boardId: string) {
   const db = await openDB("draftspace", 1);
@@ -576,6 +592,42 @@ describe("opening a second board", () => {
     await act(async () => { await session.result.current.retryStorage(); });
     expect(useBoardStore.getState().board?.id).toBe(second.id);
     expect(useBoardStore.getState().board?.name).toBe("Recovered copy");
+    expect(await new IndexedDbBoardRepository().list()).toHaveLength(2);
+    session.unmount();
+  });
+
+  /**
+   * The same fork again, on the boards a user already has. A v3 record that only wants defaults is
+   * never rewritten, so it stays in storage with no `stateId` while the document it parses to
+   * carries the sentinel. Comparing the raw record against a stamp taken from that document read
+   * this tab's own untouched board as another tab's work, and the retry forked a copy of it - on
+   * every board stored before the field existed, which is the one case the tests above cannot see,
+   * because `createBoard` always sets a `stateId`.
+   */
+  it("does not fork a board stored before documents carried a stateId", async () => {
+    const repository = new IndexedDbBoardRepository();
+    const open = createBoard("Original board");
+    await repository.create(open);
+    localStorage.setItem(LAST_BOARD, open.id);
+    const legacy = await seedLegacyBoard("Legacy board");
+    expect((await storedBoard(legacy.id) as unknown as Record<string, unknown>).stateId).toBeUndefined();
+
+    const session = await openDraftspace();
+    // The full-storage-key route onto the legacy board: it reaches the screen, and the write of
+    // the last-opened key strands the tab in session-only with that board on it.
+    const quota = new Error("full"); quota.name = "QuotaExceededError";
+    const remember = vi.spyOn(Storage.prototype, "setItem").mockImplementation(() => { throw quota; });
+    await act(async () => { await session.result.current.openBoard(legacy.id); });
+    remember.mockRestore();
+    expect(useBoardStore.getState().board?.id).toBe(legacy.id);
+    expect(usePersistenceStore.getState().status).toBe("session-only");
+
+    await act(async () => { await session.result.current.retryStorage(); });
+
+    // Written back where it was: same board id, no copy beside it, and storage no larger.
+    expect(useBoardStore.getState().board?.id).toBe(legacy.id);
+    expect(useBoardStore.getState().board?.name).toBe("Legacy board");
+    expect(usePersistenceStore.getState().status).toBe("saved");
     expect(await new IndexedDbBoardRepository().list()).toHaveLength(2);
     session.unmount();
   });

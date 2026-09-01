@@ -1,5 +1,6 @@
 import { z } from "zod";
 import { CONNECTOR_LABEL_MAX_LENGTH, DEFAULT_CONNECTOR_ARROWS } from "@/core/elements/types";
+import { NO_STATE_ID } from "@/features/persistence/stored-board-stamp";
 
 const finite = z.number().finite();
 const color = z.string().min(1).max(64);
@@ -71,7 +72,8 @@ const boardFields = {
   // Stored documents written before this field parse to the sentinel, and the first mutation
   // replaces it. Every document that has one differs from it, so a record another tab advanced is
   // still detected; comparisons are scoped to one board id, so two legacy records cannot be confused.
-  stateId: z.string().min(1).default("pre-state-id"),
+  // The sentinel lives with the comparison that reads it, so the two cannot drift apart.
+  stateId: z.string().min(1).default(NO_STATE_ID),
   viewport: z.object({ x: finite, y: finite, zoom: z.number().min(0.1).max(8) }),
   preferences: z.object({
     backgroundPattern: z.enum(["dots", "grid", "none"]),
