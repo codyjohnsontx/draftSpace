@@ -1,6 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { BoardRecoveryScreen } from "@/components/recovery/board-recovery-screen";
+import { BoardAccessBanner } from "@/components/app-shell/board-access-banner";
 import { PersistenceStatus } from "@/components/app-shell/persistence-status";
 import { usePersistenceStore, type RecoveryPayload } from "@/stores/persistence-store";
 import type { PersistenceController } from "@/hooks/use-board-persistence";
@@ -9,7 +10,7 @@ import { persistenceError } from "@/features/persistence/persistence-errors";
 const controller = (): PersistenceController => ({ retrySave: vi.fn(), retryStorage: vi.fn(), startNewBoard: vi.fn(), openBoard: vi.fn().mockResolvedValue("opened"), downloadRecovery: vi.fn(), downloadCurrentBackup: vi.fn() });
 const recovery: RecoveryPayload = { boardId: "broken", raw: { bad: true }, detectedAt: new Date().toISOString(), reason: "invalid", issues: ["name: Required"] };
 
-beforeEach(() => usePersistenceStore.setState({ status: "saved", boardAccess: "owner", error: null, notice: null, recovery: null, networkOnline: true, savedRevision: 0, attemptedRevision: null, lastSavedAt: null }));
+beforeEach(() => usePersistenceStore.setState({ status: "saved", boardAccess: "owner", error: null, notice: null, takenOverBoardId: null, recovery: null, networkOnline: true, savedRevision: 0, attemptedRevision: null, lastSavedAt: null }));
 
 describe("persistence UI", () => {
   it("shows focused recovery actions and preserves the start-new intent", async () => {
@@ -67,4 +68,31 @@ describe("persistence UI", () => {
   });
   it("renders saved state as non-actionable status", () => { render(<PersistenceStatus controller={controller()} />); expect(screen.queryByRole("button", { name: "Saved locally" })).not.toBeInTheDocument(); expect(screen.getByText("Saved locally")).toBeVisible(); });
   it("describes a successful local save while offline", () => { usePersistenceStore.setState({ status: "saved", networkOnline: false }); render(<PersistenceStatus controller={controller()} />); expect(screen.getByText("Saved offline")).toBeVisible(); });
+});
+
+describe("board access banner", () => {
+  it("says why this tab cannot edit, and announces the handover when it arrives", () => {
+    usePersistenceStore.setState({ boardAccess: "read-only" });
+    render(<BoardAccessBanner />);
+    expect(screen.getByText(/Another tab is editing this board/)).toBeVisible();
+    act(() => { usePersistenceStore.getState().markTakenOver("board-1"); });
+    expect(screen.getByText(/The other tab let this board go/)).toBeVisible();
+  });
+  it("claims no handover when a read-only tab claims a board the user picked", () => {
+    // Opening a board nobody holds, starting a new one, and falling back to a session-only draft
+    // all move this tab from read-only to owner without another tab having done anything, so the
+    // access transition alone cannot tell a promotion apart from a switch the user made.
+    usePersistenceStore.setState({ boardAccess: "read-only" });
+    render(<BoardAccessBanner />);
+    act(() => { usePersistenceStore.getState().markLoading(); usePersistenceStore.getState().setBoardAccess("owner"); });
+    expect(screen.queryByText(/The other tab let this board go/)).not.toBeInTheDocument();
+    expect(screen.queryByText(/Another tab is editing this board/)).not.toBeInTheDocument();
+  });
+  it("retires a handover notice as soon as the tab leaves the board it was about", () => {
+    usePersistenceStore.setState({ boardAccess: "read-only" });
+    render(<BoardAccessBanner />);
+    act(() => { usePersistenceStore.getState().markTakenOver("board-1"); });
+    act(() => { usePersistenceStore.getState().markLoading(); });
+    expect(screen.queryByText(/The other tab let this board go/)).not.toBeInTheDocument();
+  });
 });

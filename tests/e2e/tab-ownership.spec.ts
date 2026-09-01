@@ -329,6 +329,9 @@ test("the claim follows a board switch rather than leaving two writers on one bo
   await switchToBoard(reader, browserName, "First board");
   await expect(boardName(reader)).toHaveValue("First board");
   await expect(reader.getByRole("main", { name: "Draftspace infinite canvas" })).not.toHaveAttribute("data-readonly");
+  // The user picked this board and nobody held it, so nothing happened in another tab and no
+  // banner may say one let it go. Only the promotion path is a handover.
+  await expect(reader.locator(".board-access-banner")).toHaveCount(0);
   await drawRectangle(reader, 300, 450, 440, 550);
 
   // Switching onto a board another tab holds must open it read-only, not start a second autosave.

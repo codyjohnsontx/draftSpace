@@ -279,7 +279,6 @@ kbd { display: inline-grid; min-width: 21px; height: 21px; place-items: center; 
 .board-access-banner { position: fixed; z-index: 17; left: 50%; top: 76px; display: flex; align-items: center; gap: 8px; max-width: min(560px, calc(100vw - 32px)); padding: 8px 13px; border: 1px solid rgba(184,95,63,.28); border-radius: 9px; background: #fdf3ec; box-shadow: 0 5px 18px rgba(49,42,34,.12); transform: translateX(-50%); color: #7c4630; font-size: 11px; line-height: 1.45; backdrop-filter: blur(12px); animation: settle-in .2s ease both; }
 .board-access-banner > svg { flex: none; }.board-access-banner strong { font-weight: 700; }
 .board-access-banner.took-over { border-color: rgba(63,127,120,.3); background: #eef5f2; color: #286752; }
-.canvas-workspace[data-readonly] { cursor: default; }
 
 .join-room-page { position: relative; display: grid; place-items: center; width: 100vw; min-height: 100svh; padding: 72px 20px 40px; background-color: var(--canvas); background-image: radial-gradient(circle, rgba(85,78,69,.16) 1.2px, transparent 1.3px); background-size: 24px 24px; overflow-y: auto; }
 .join-room-page::before { content: ""; position: fixed; inset: 0; pointer-events: none; background: radial-gradient(circle at 50% 44%, rgba(247,244,237,.1) 0, var(--canvas) 62%); }

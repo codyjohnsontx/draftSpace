@@ -30,6 +30,13 @@ type PersistenceStore = {
    * retires it: until then the tab is still showing the board the notice is about.
    */
   notice: PersistenceError | null;
+  /**
+   * The board this tab was handed when the tab holding it let it go, and only that. Claiming a
+   * board because the user picked one nobody holds is not a handover, and the access transition
+   * is identical in both, so the promotion has to say so itself rather than be inferred. Cleared
+   * the moment this tab is read-only again or another board starts opening.
+   */
+  takenOverBoardId: string | null;
   recovery: RecoveryPayload | null;
   /**
    * Every readable board in this browser, newest first. Persistence state rather than board
@@ -41,6 +48,7 @@ type PersistenceStore = {
   attemptedRevision: number | null;
   networkOnline: boolean;
   setBoardAccess: (boardAccess: BoardAccess) => void;
+  markTakenOver: (boardId: string) => void;
   markLoading: () => void;
   markSaving: (revision: number) => void;
   markSaved: (revision: number, savedAt: string) => void;
@@ -55,10 +63,11 @@ type PersistenceStore = {
 };
 
 export const usePersistenceStore = create<PersistenceStore>((set) => ({
-  status: "loading", boardAccess: "owner", error: null, notice: null, recovery: null, boards: [], lastSavedAt: null, savedRevision: 0, attemptedRevision: null,
+  status: "loading", boardAccess: "owner", error: null, notice: null, takenOverBoardId: null, recovery: null, boards: [], lastSavedAt: null, savedRevision: 0, attemptedRevision: null,
   networkOnline: typeof navigator === "undefined" ? true : navigator.onLine,
-  setBoardAccess: (boardAccess) => set({ boardAccess }),
-  markLoading: () => set({ status: "loading", error: null, notice: null, recovery: null }),
+  setBoardAccess: (boardAccess) => set((state) => ({ boardAccess, takenOverBoardId: boardAccess === "owner" ? state.takenOverBoardId : null })),
+  markTakenOver: (takenOverBoardId) => set({ boardAccess: "owner", takenOverBoardId }),
+  markLoading: () => set({ status: "loading", error: null, notice: null, takenOverBoardId: null, recovery: null }),
   markSaving: (attemptedRevision) => set({ status: "saving", attemptedRevision, error: null }),
   markSaved: (savedRevision, lastSavedAt) => set({ status: "saved", savedRevision, lastSavedAt, attemptedRevision: null, error: null }),
   markFailed: (error) => set({ status: "failed", error, attemptedRevision: null }),

@@ -18,9 +18,13 @@ export function BoardAccessBanner() {
   useEffect(() => {
     let timer: ReturnType<typeof setTimeout> | undefined;
     const unsubscribe = usePersistenceStore.subscribe((state, previous) => {
-      if (state.boardAccess !== "owner" || previous.boardAccess !== "read-only") return;
-      setTookOver(true);
+      // Only the promotion path raises this. A read-only tab that claims a board the user picked
+      // from the switcher, starts a new one, or falls back to a session-only draft makes the very
+      // same read-only to owner move without another tab having done anything.
+      if (state.takenOverBoardId === previous.takenOverBoardId) return;
       clearTimeout(timer);
+      if (state.takenOverBoardId === null) { setTookOver(false); return; }
+      setTookOver(true);
       timer = setTimeout(() => setTookOver(false), TAKEOVER_NOTICE_MS);
     });
     return () => { unsubscribe(); clearTimeout(timer); };

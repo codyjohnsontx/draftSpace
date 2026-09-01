@@ -244,7 +244,10 @@ export function CanvasWorkspace() {
   }, [board, selectedConnectorIds]);
 
   if (!board) return <div className="loading-canvas"><span /><p>Opening your draft…</p></div>;
-  const cursor = spaceHeld || activeTool === "hand" ? "grab" : activeTool === "connector" || isShapeTool(activeTool) ? "crosshair" : "default";
+  // Panning is still allowed without the board, so only the tools that would change it fall back
+  // to the plain pointer. The connector tool stays armed after wiring and a board switch leaves it
+  // that way, so a tab landing on a board another tab holds must not keep promising a drag it drops.
+  const cursor = spaceHeld || activeTool === "hand" ? "grab" : canEdit && (activeTool === "connector" || isShapeTool(activeTool)) ? "crosshair" : "default";
   return <main ref={rootRef} className="canvas-workspace" aria-label="Draftspace infinite canvas" data-tool={activeTool} data-board-ready="true" data-element-count={board.elementIds.length} data-readonly={!canEdit || undefined} style={{ cursor }} onPointerDown={onPointerDown} onPointerMove={onPointerMove} onPointerLeave={() => { useSessionStore.getState().setPointerWorld(null); setConnectHover(null); collaborationController.publishPresence({ cursor: null }); }} onPointerUp={finishGesture} onPointerCancel={() => setGesture(null)} onWheel={(event) => { event.preventDefault(); if (followingHost) collaborationController.setFollowingHost(false); markInteraction(ordered.length); const p = localPoint(event); if (classifyWheelGesture(event) === "zoom") useViewportStore.getState().zoomAt(p, viewport.zoom * Math.exp(-event.deltaY * .0015)); else useViewportStore.getState().panBy({ x: -event.deltaX, y: -event.deltaY }); }}>
     {/* An edge is routed against the boxes its ends are being drawn at, so a connector follows
         a shape through a move or a resize rather than snapping to it on release. */}

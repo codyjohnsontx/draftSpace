@@ -152,7 +152,9 @@ export function useBoardPersistence(): PersistenceController {
       if (result.kind === "ready") { useBoardStore.getState().setBoard(result.board); rememberStored(result.board); }
       await startCoordinator();
       persistence.markSaved(useBoardStore.getState().revision, new Date().toISOString());
-      persistence.setBoardAccess("owner");
+      // The one path that really is a handover, and the board is the one this tab was already
+      // looking at, so it is the only one allowed to say another tab let this board go.
+      persistence.markTakenOver(boardId);
     } catch (error) { console.error("Draftspace could not take over this board", error); enterSessionOnly(error); }
   }, [enterSessionOnly, rememberStored, repository, startCoordinator]);
 
