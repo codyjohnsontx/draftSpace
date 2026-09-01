@@ -31,8 +31,10 @@ type PersistenceStore = {
   error: PersistenceError | null;
   /**
    * Something the user has to be told that is not a failure, so `status` has nothing to say
-   * about it and the saves that clear `error` must leave it alone. Only opening another board
-   * retires it: until then the tab is still showing the board the notice is about.
+   * about it and the saves that clear `error` must leave it alone. Only the board it is about
+   * leaving the screen retires it: `markLoading` on the way into another board, and
+   * `startNewBoard`, which never passes through loading and so has to clear it itself. Until
+   * then the tab is still showing the board the notice is about.
    */
   notice: PersistenceError | null;
   /**
