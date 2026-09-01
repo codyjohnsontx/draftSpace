@@ -11,6 +11,7 @@ import { useBoardPersistence, type OpenBoardOutcome } from "@/hooks/use-board-pe
 import { IndexedDbBoardRepository } from "@/repositories/indexeddb-board-repository";
 import { useBoardStore } from "@/stores/board-store";
 import { usePersistenceStore } from "@/stores/persistence-store";
+import { useSessionStore } from "@/stores/session-store";
 
 const LAST_BOARD = "draftspace:last-board";
 
@@ -227,6 +228,36 @@ describe("opening a second board", () => {
     session.unmount(); update.mockRestore();
   });
 
+  // A recovered copy is the same document under a new board id, so the two boards hold the SAME
+  // element ids. That is what makes a leaked preview repaint - and finishPreview overwrite - the
+  // wrong board, rather than being a theoretical id collision.
+  it("does not carry a style preview onto a board that shares its element ids", async () => {
+    const repository = new IndexedDbBoardRepository();
+    const original = createBoard("Original board");
+    await repository.create(original);
+    localStorage.setItem(LAST_BOARD, original.id);
+    const session = await openDraftspace();
+    await act(async () => { useBoardStore.getState().createShape("rectangle", { x: 10, y: 10, width: 80, height: 60 }); });
+
+    const open = useBoardStore.getState().board!;
+    const sharedElementId = open.elementIds[0];
+    const recoveredCopy = { ...open, id: crypto.randomUUID(), name: "Recovered copy", updatedAt: new Date(Date.now() + 1000).toISOString() };
+    await repository.create(recoveredCopy);
+    expect(recoveredCopy.elementIds).toContain(sharedElementId);
+
+    // A style preview is live on the original board when the user picks the copy.
+    act(() => {
+      useSessionStore.getState().setStylePreview({ elementIds: [sharedElementId], patch: { fillColor: "#ff0000" } });
+      useSessionStore.getState().setConnectorStylePreview({ connectorIds: ["whatever"], patch: { strokeColor: "#ff0000" } });
+    });
+
+    await act(async () => { await session.result.current.openBoard(recoveredCopy.id); });
+    expect(useBoardStore.getState().board?.id).toBe(recoveredCopy.id);
+    expect(useSessionStore.getState().stylePreview).toBeNull();
+    expect(useSessionStore.getState().connectorStylePreview).toBeNull();
+    session.unmount();
+  });
+
   it("keeps the open board's history when storage throws during a pick", async () => {
     const { first, second } = await seedTwoBoards();
     const session = await openDraftspace();
@@ -271,7 +302,8 @@ describe("opening a second board", () => {
   it("does not claim the picked board is unopenable when it is already on screen", async () => {
     const { second } = await seedTwoBoards();
     const session = await openDraftspace();
-    const remember = vi.spyOn(Storage.prototype, "setItem").mockImplementation(() => { throw new Error("quota"); });
+    const quota = new Error("full"); quota.name = "QuotaExceededError";
+    const remember = vi.spyOn(Storage.prototype, "setItem").mockImplementation(() => { throw quota; });
 
     let outcome: OpenBoardOutcome = "unreadable";
     await act(async () => { outcome = await session.result.current.openBoard(second.id); });
@@ -279,6 +311,10 @@ describe("opening a second board", () => {
     expect(outcome).toBe("opened");
     expect(useBoardStore.getState().board?.id).toBe(second.id);
     expect(usePersistenceStore.getState().status).toBe("session-only");
+    // Everything that can throw once the board is on screen is a write, so full storage must say
+    // so rather than claim the board could not be read.
+    expect(usePersistenceStore.getState().error?.code).toBe("write-failed");
+    expect(usePersistenceStore.getState().error?.message).toBe("Browser storage is full.");
     session.unmount();
   });
 });

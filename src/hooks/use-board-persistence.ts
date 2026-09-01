@@ -231,8 +231,13 @@ export function useBoardPersistence(): PersistenceController {
       persistence.markLoading();
       await drainCoordinator();
       useBoardStore.getState().setBoard(result.board);
-      // Selection and history belong to the board that was open, not to this one.
+      // Selection, history and any in-flight style preview belong to the board that was open, not
+      // to this one. Previews are keyed by element id, and two boards can hold the same ids - a
+      // recovered copy is exactly that - so a preview left behind would repaint the new board and
+      // finishPreview would commit the old board's patch against it.
       useSessionStore.getState().setSelected([]);
+      useSessionStore.getState().setStylePreview(null);
+      useSessionStore.getState().setConnectorStylePreview(null);
       useViewportStore.getState().setViewport(result.board.preferences.restoreViewport ? result.board.viewport : { x: 0, y: 0, zoom: 1 });
       localStorage.setItem(LAST_BOARD, result.board.id);
       if (result.migrated) await repository.update(result.board);
@@ -250,7 +255,10 @@ export function useBoardPersistence(): PersistenceController {
       // something left to say. Before the swap the open board and its autosave are untouched, so
       // reading the picked one is the only thing that failed, and the row already reports that.
       if (useBoardStore.getState().board?.id !== boardId) return "unreadable";
-      enterSessionOnly(error);
+      // Everything that can still throw here is a write - the last-opened key, the migration
+      // write-back, starting the coordinator - so a full-storage failure must say so rather than
+      // report that the board could not be read.
+      enterSessionOnly(normalizePersistenceError(error, "write"));
       return "opened";
     }
   }, [drainCoordinator, enterSessionOnly, flushViewport, repository, settleOpenBoard, startCoordinator]);
