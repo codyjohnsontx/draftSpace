@@ -4,6 +4,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import { act, fireEvent, render, renderHook, screen, waitFor } from "@testing-library/react";
 import { deleteDB, openDB } from "idb";
 import { BoardSwitcher } from "@/components/app-shell/board-switcher";
+import { PersistenceStatus } from "@/components/app-shell/persistence-status";
 import { createBoard } from "@/core/board/factory";
 import type { BoardDocument } from "@/core/board/types";
 import { emptyHistory } from "@/features/history/history";
@@ -226,6 +227,79 @@ describe("opening a second board", () => {
     expect(outcome).toBe("unsaved-work");
     expect(useBoardStore.getState().board?.id).toBe(first.id);
     session.unmount(); update.mockRestore();
+  });
+
+  /**
+   * The rescue writes the copy while this tab can edit again: its claim has landed by then, so the
+   * canvas takes input for the whole of that write. The copy used to go on screen only after it,
+   * so a shape drawn in the window was committed to the document being replaced and then thrown
+   * away by the setBoard that followed, with the status reporting the work saved.
+   */
+  it("keeps an edit made while the rescued copy is still being written", async () => {
+    const repository = new IndexedDbBoardRepository();
+    const original = createBoard("Original board");
+    await repository.create(original);
+    localStorage.setItem(LAST_BOARD, original.id);
+    const session = await openDraftspace();
+
+    // Another tab advanced the stored record, which is what sends the retry to a copy rather than
+    // letting it write over work this tab never saw.
+    await repository.update({ ...original, name: "Advanced elsewhere", updatedAt: new Date(Date.now() + 5000).toISOString() });
+
+    // Work this tab is holding that storage has not taken, which is what the copy exists to keep.
+    const failing = vi.spyOn(IndexedDbBoardRepository.prototype, "update").mockRejectedValue(new Error("QuotaExceededError"));
+    await act(async () => { useBoardStore.getState().createShape("rectangle", { x: 10, y: 10, width: 80, height: 60 }); });
+    failing.mockRestore();
+
+    // The user draws while the copy is being created, the way an ordinary hand does.
+    const create = vi.spyOn(IndexedDbBoardRepository.prototype, "create").mockImplementation(async (board) => {
+      create.mockRestore();
+      useBoardStore.getState().createShape("rectangle", { x: 200, y: 200, width: 40, height: 40 });
+      await repository.create(board);
+    });
+
+    await act(async () => { await session.result.current.retryStorage(); });
+
+    const copyId = useBoardStore.getState().board!.id;
+    expect(copyId).not.toBe(original.id);
+    expect(useBoardStore.getState().board?.name).toBe("Original board (recovered copy)");
+    // The late shape is on the copy rather than lost with the document it replaced, and the tail
+    // that reschedules anything past the write it reported saved puts it in storage too.
+    expect(useBoardStore.getState().board?.elementIds).toHaveLength(2);
+    await waitFor(async () => expect((await storedBoard(copyId)).elementIds).toHaveLength(2), { timeout: 3000 });
+    expect((await storedBoard(original.id)).elementIds).toHaveLength(0);
+    session.unmount();
+  });
+
+  /**
+   * `markSaved` deliberately preserves a notice, so nothing else retires it and a new board has to
+   * do it itself. Without that, the "Saved as a copy" panel goes on naming - and offering a backup
+   * of - a board that is no longer the one on screen.
+   */
+  it("stops naming the rescued copy once a new board is started", async () => {
+    const repository = new IndexedDbBoardRepository();
+    const original = createBoard("Original board");
+    await repository.create(original);
+    localStorage.setItem(LAST_BOARD, original.id);
+    const session = await openDraftspace();
+
+    await repository.update({ ...original, name: "Advanced elsewhere", updatedAt: new Date(Date.now() + 5000).toISOString() });
+    const failing = vi.spyOn(IndexedDbBoardRepository.prototype, "update").mockRejectedValue(new Error("QuotaExceededError"));
+    await act(async () => { useBoardStore.getState().createShape("rectangle", { x: 10, y: 10, width: 80, height: 60 }); });
+    failing.mockRestore();
+    await act(async () => { await session.result.current.retryStorage(); });
+
+    render(createElement(PersistenceStatus, { controller: session.result.current }));
+    const copyId = useBoardStore.getState().board!.id;
+    expect(screen.getByRole("button", { name: "Saved as a copy" })).toBeVisible();
+
+    await act(async () => { await session.result.current.startNewBoard(); });
+
+    expect(useBoardStore.getState().board?.id).not.toBe(copyId);
+    expect(usePersistenceStore.getState().notice).toBeNull();
+    expect(screen.queryByRole("button", { name: "Saved as a copy" })).not.toBeInTheDocument();
+    expect(screen.getByText("Saved locally")).toBeVisible();
+    session.unmount();
   });
 
   // A recovered copy is the same document under a new board id, so the two boards hold the SAME

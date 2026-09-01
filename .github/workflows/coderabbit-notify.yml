@@ -26,21 +26,32 @@ jobs:
       REVIEW_URL: ${{ github.event.review.html_url }}
 
     steps:
+      # Both deliveries are best effort. Reaching a third-party notifier is not
+      # a statement about the pull request, so an outage there must warn rather
+      # than fail the check. Bound each attempt too: the default curl has no
+      # connect timeout, so an unreachable host hangs the job for minutes.
       - name: Push to ntfy
         if: env.NTFY_TOPIC != ''
         run: |
-          curl -fsS \
+          curl -fsS --retry 3 --retry-all-errors --retry-delay 5 \
+            --connect-timeout 10 --max-time 30 \
             -H "Title: CodeRabbit reviewed ${REPO} #${PR_NUM}" \
             -H "Click: ${REVIEW_URL}" \
             -H "Tags: rabbit" \
             --data-raw "${PR_TITLE}" \
-            "https://ntfy.sh/${NTFY_TOPIC}"
+            "https://ntfy.sh/${NTFY_TOPIC}" \
+            || echo "::warning::ntfy delivery failed; review notification not sent"
 
       - name: Post to Slack
         if: env.SLACK_WEBHOOK_URL != ''
         run: |
-          jq -n \
+          # Hold the payload in a variable rather than piping it in: curl cannot
+          # rewind stdin, so a retried request would have no body to resend.
+          payload=$(jq -n \
             --arg text "*CodeRabbit reviewed <${REVIEW_URL}|${REPO} #${PR_NUM}>*"$'\n'"${PR_TITLE}" \
-            '{text: $text}' \
-          | curl -fsS -X POST -H 'Content-Type: application/json' \
-              --data-binary @- "${SLACK_WEBHOOK_URL}"
+            '{text: $text}')
+          curl -fsS -X POST -H 'Content-Type: application/json' \
+            --retry 3 --retry-all-errors --retry-delay 5 \
+            --connect-timeout 10 --max-time 30 \
+            --data-raw "${payload}" "${SLACK_WEBHOOK_URL}" \
+            || echo "::warning::Slack delivery failed; review notification not sent"

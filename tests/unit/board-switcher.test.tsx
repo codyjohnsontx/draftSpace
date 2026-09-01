@@ -105,6 +105,18 @@ describe("board switcher", () => {
     expect(screen.getByRole("menuitemradio", { name: /Payments architecture/ })).toHaveAttribute("aria-checked", "true");
   });
 
+  it("says both halves when the open board was let go and the picked one could not be claimed", async () => {
+    // The user is left looking at the board they had, so the click looks ignored, and that board
+    // quietly stopped being saved on the way. Neither half is visible from the board on screen.
+    const actions = controller("handover-failed"); render(<BoardSwitcher controller={actions} />);
+    fireEvent.click(screen.getByRole("button", { name: "Open a board" }));
+    fireEvent.click(screen.getByRole("menuitemradio", { name: /Recovered copy/ }));
+    await waitFor(() => expect(screen.getByRole("menuitemradio", { name: /Recovered copy/ })).toHaveTextContent("could not open this board"));
+    expect(screen.getByRole("menuitemradio", { name: /Recovered copy/ })).toHaveTextContent("no longer being saved");
+    expect(screen.getByRole("menu", { name: "Boards in this browser" })).toBeVisible();
+    expect(screen.getByRole("status")).toHaveTextContent("no longer being saved");
+  });
+
   it("ignores a second pick while a board is still opening", async () => {
     const actions = controller();
     let release: (outcome: OpenBoardOutcome) => void = () => {};
