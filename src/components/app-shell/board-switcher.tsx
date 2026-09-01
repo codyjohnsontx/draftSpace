@@ -40,8 +40,9 @@ export function BoardSwitcher({ controller }: { controller: PersistenceControlle
   const openBoardId = useBoardStore((state) => state.board?.id ?? null);
   const [open, setOpen] = useState(false);
   // A pick can leave the board that is open on screen: the picked one stopped being readable
-  // between this list being built and the click, the open one has work storage would not take, or
-  // the open one was let go and the picked one could not be claimed in its place.
+  // between this list being built and the click, the open one has work storage would not take, the
+  // open one is not being saved at all and holds work that would go with it, or the open one was
+  // let go and the picked one could not be claimed in its place.
   const [refused, setRefused] = useState<{ boardId: string; outcome: Exclude<OpenBoardOutcome, "opened"> } | null>(null);
   // The menu stays up while a board opens, so a second pick must not race the first.
   const opening = useRef(false);
