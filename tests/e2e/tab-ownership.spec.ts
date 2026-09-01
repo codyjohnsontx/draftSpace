@@ -408,6 +408,10 @@ test("keeps an edit made while the retry is still claiming the board", async ({ 
  * across that gap and nothing may edit during it. A claim that then fails outright must not leave
  * the tab sitting there: `pending` renders no banner and refuses every edit, so a stuck one is a
  * silent lockout, which is the one failure this whole design exists to rule out.
+ *
+ * It must also not be reported as a board that opened. Nothing the user can see distinguishes the
+ * two - the same board under the same name is still on screen - so the pick has to say so itself,
+ * along with the loss of saving they have no other way to connect to their click.
  */
 test("does not strand a tab when the claim on the board it is switching to fails", async ({ browserName, page }) => {
   // One claim for the board this opens with, then the switch's claim is the one that breaks.
@@ -419,8 +423,17 @@ test("does not strand a tab when the claim on the board it is switching to fails
 
   await switchToBoard(page, browserName, "First board");
 
-  // Whatever it decides, the tab has to end up somewhere a user can act from: it says nothing is
-  // being saved and stays editable, rather than silently refusing input with nothing on screen.
+  // The pick never reached the screen, so the menu stays up and the row says both halves: the
+  // board the user chose did not open, and the one still in front of them stopped being saved.
+  // Closing the menu here would leave a click that looks ignored and a silent loss of saving.
+  await expect(page.getByRole("menu", { name: "Boards in this browser" })).toBeVisible();
+  const refusedRow = page.getByRole("menuitemradio", { name: /First board/ });
+  await expect(refusedRow).toContainText("could not open this board");
+  await expect(refusedRow).toContainText("no longer being saved");
+  await expect(boardName(page)).toHaveValue("Second board");
+
+  // And the tab is still somewhere a user can act from: it says nothing is being saved and stays
+  // editable, rather than silently refusing input with nothing on screen.
   await expect(saveStatus(page)).toHaveText("Not saving");
   await expect(page.getByRole("main", { name: "Draftspace infinite canvas" })).not.toHaveAttribute("data-readonly");
   await drawRectangle(page, 700, 200, 840, 300);

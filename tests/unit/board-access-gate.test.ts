@@ -21,12 +21,9 @@ describe("board access gate", () => {
     expect(canEditBoard()).toBe(false);
   });
 
-  it("does not present a handover as another tab's read-only view", () => {
-    // The banner and the save status both key on "read-only" exactly, so the instant between
-    // two leases must not flash "View only" at a user who simply picked another board.
-    usePersistenceStore.setState({ boardAccess: "pending" });
-    expect(usePersistenceStore.getState().boardAccess === "read-only").toBe(false);
-  });
+  // That a handover is not shown as another tab's read-only view is decided by the banner and the
+  // save status, not here, so it is pinned where they are rendered: see "board access presentation"
+  // in tests/unit/persistence-ui.test.tsx.
 
   it("still refuses a live-room viewer that holds the claim", () => {
     useCollaborationStore.setState({ mode: "guest", status: "connected", role: "viewer" });

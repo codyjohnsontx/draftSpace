@@ -96,3 +96,25 @@ describe("board access banner", () => {
     expect(screen.queryByText(/The other tab let this board go/)).not.toBeInTheDocument();
   });
 });
+
+/**
+ * Both surfaces key on "read-only" exactly, and widening either to "not owner" is the natural
+ * mistake: `pending` is this tab between two leases of its own, so a user who simply picked
+ * another board must not be told for that instant that someone else is editing it.
+ */
+describe("board access presentation", () => {
+  it("says nothing about another tab while a claim is being handed over", () => {
+    usePersistenceStore.setState({ boardAccess: "pending" });
+    const { container } = render(<><PersistenceStatus controller={controller()} /><BoardAccessBanner /></>);
+    expect(screen.queryByText("View only")).not.toBeInTheDocument();
+    expect(container.querySelector(".board-access-banner")).toBeNull();
+  });
+
+  it("says View only and why once the board really is another tab's", () => {
+    usePersistenceStore.setState({ boardAccess: "read-only" });
+    const { container } = render(<><PersistenceStatus controller={controller()} /><BoardAccessBanner /></>);
+    expect(screen.getByRole("button", { name: "View only" })).toBeVisible();
+    expect(container.querySelector(".board-access-banner")).not.toBeNull();
+    expect(screen.getByText(/Another tab is editing this board/)).toBeVisible();
+  });
+});

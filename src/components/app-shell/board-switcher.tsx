@@ -13,6 +13,9 @@ const elementSummary = (count: number) => count === 1 ? "1 element" : `${count} 
 const refusedSummary: Record<Exclude<OpenBoardOutcome, "opened">, string> = {
   "unreadable": "This board can no longer be opened from this browser.",
   "unsaved-work": "Draftspace could not save the open board, so it stayed open.",
+  // Both halves, because the second one is invisible: the board the user is still looking at was
+  // let go on the way here, so it is no longer being saved and nothing else on screen says so.
+  "handover-failed": "Draftspace could not open this board, and the board still on screen is no longer being saved.",
 };
 
 /** Enough of a timestamp to tell two boards apart, and nothing when the record has no usable one. */
@@ -34,7 +37,8 @@ export function BoardSwitcher({ controller }: { controller: PersistenceControlle
   const openBoardId = useBoardStore((state) => state.board?.id ?? null);
   const [open, setOpen] = useState(false);
   // A pick can leave the board that is open on screen: the picked one stopped being readable
-  // between this list being built and the click, or the open one has work storage would not take.
+  // between this list being built and the click, the open one has work storage would not take, or
+  // the open one was let go and the picked one could not be claimed in its place.
   const [refused, setRefused] = useState<{ boardId: string; outcome: Exclude<OpenBoardOutcome, "opened"> } | null>(null);
   // The menu stays up while a board opens, so a second pick must not race the first.
   const opening = useRef(false);

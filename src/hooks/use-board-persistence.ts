@@ -29,10 +29,19 @@ const finishBackup = (result: BackupResult) => {
 };
 
 /**
- * Whether a picked board is now the open one, and when it is not, which board stood in the way:
- * the picked one could not be read, or the open one still holds work storage would not take.
+ * Whether work that resumed after an await still stands where it started: acting for the same
+ * claim, on the same document. The lease is the test for the claim rather than the board id,
+ * which a switch away and back reuses, and the board id is the test for what is on screen.
  */
-export type OpenBoardOutcome = "opened" | "unreadable" | "unsaved-work";
+const stillHolds = (lease: BoardLease, boardId: string) =>
+  boardClaimIsCurrent(lease) && useBoardStore.getState().board?.id === boardId;
+
+/**
+ * Whether a picked board is now the open one, and when it is not, what became of the pick: the
+ * picked one could not be read, the open one still holds work storage would not take, or the open
+ * board's claim was handed over and the picked one could not be claimed in its place.
+ */
+export type OpenBoardOutcome = "opened" | "unreadable" | "unsaved-work" | "handover-failed";
 
 export type PersistenceController = {
   retrySave: () => Promise<void>;
@@ -141,7 +150,7 @@ export function useBoardPersistence(): PersistenceController {
       // The tab may have switched boards while this promotion was in flight. The board id cannot
       // settle that on its own, because switching away and back reuses it, so this asks whether
       // the lease that started the promotion is still the claim the tab holds.
-      if (!boardClaimIsCurrent(lease) || useBoardStore.getState().board?.id !== boardId) return;
+      if (!stillHolds(lease, boardId)) return;
       if (result.kind === "invalid") {
         persistence.setBoardAccess("owner");
         persistence.requireRecovery({ boardId: result.boardId, raw: result.raw, detectedAt: new Date().toISOString(), reason: "invalid", issues: result.issues }); return;
@@ -156,12 +165,20 @@ export function useBoardPersistence(): PersistenceController {
       // startCoordinator awaits, so the claim is proved once more before this tab is told it may
       // edit and save. A coordinator started for a board the tab no longer holds is disposed
       // rather than drained: draining flushes, and that write is what this guard exists to stop.
-      if (!boardClaimIsCurrent(lease)) { coordinator.current?.dispose(); coordinator.current = null; return; }
+      if (!stillHolds(lease, boardId)) { coordinator.current?.dispose(); coordinator.current = null; return; }
       persistence.markSaved(useBoardStore.getState().revision, new Date().toISOString());
       // The one path that really is a handover, and the board is the one this tab was already
       // looking at, so it is the only one allowed to say another tab let this board go.
       persistence.markTakenOver(boardId);
-    } catch (error) { console.error("Draftspace could not take over this board", error); enterSessionOnly(error); }
+    } catch (error) {
+      console.error("Draftspace could not take over this board", error);
+      // The catch resumes after an await like the two guards above it, and does the most
+      // destructive thing in this hook: entering session-only releases whatever claim the tab
+      // holds now, which after a switch is the claim on a board a coordinator is still saving.
+      // A promotion whose claim is gone has nothing left to say about the session that replaced it.
+      if (!stillHolds(lease, boardId)) return;
+      enterSessionOnly(error);
+    }
   }, [enterSessionOnly, rememberStored, repository, startCoordinator]);
 
   /** Claims the board for this tab, or opens read-only when another tab already holds it. */
@@ -274,12 +291,20 @@ export function useBoardPersistence(): PersistenceController {
   const saveAsRecoveredCopy = useCallback(async (board: BoardDocument) => {
     const timestamp = now();
     const copy: BoardDocument = { ...board, id: newId(), name: `${board.name} (recovered copy)`, createdAt: timestamp, updatedAt: timestamp };
+    // Access is `pending` for the length of this claim, so nothing can be drawn across it.
     await claim(copy.id);
-    await repository.create(copy);
+    // The copy goes on screen before it is written, not after. The claim makes this tab editable
+    // again while the write is still in flight, and a shape drawn there would otherwise be
+    // committed to the document being replaced and then thrown away by a later setBoard, with the
+    // status reporting it saved. Swapping first leaves it on the copy, where the revision this
+    // write stands at is read and the tail below has something to schedule.
     useBoardStore.getState().setBoard(copy); rememberStored(copy);
-    localStorage.setItem(LAST_BOARD, copy.id);
     const savedRevision = useBoardStore.getState().revision;
-    const activeCoordinator = await startCoordinator();
+    await repository.create(copy);
+    // Only once the copy exists may it be what this browser opens next: a pointer to a board that
+    // was never written would send the next cold start to a board that is not there.
+    localStorage.setItem(LAST_BOARD, copy.id);
+    const activeCoordinator = await startCoordinator(savedRevision);
     const persistence = usePersistenceStore.getState();
     persistence.markSaved(savedRevision, new Date().toISOString());
     // A notice, not an error: the next autosave clears `error`, and a pan is enough to trigger one.
@@ -305,7 +330,10 @@ export function useBoardPersistence(): PersistenceController {
       // them: writing the copy captured before the awaits while reporting the newer revision
       // saved would drop the edit in between with the UI saying it had been stored.
       const board = useBoardStore.getState().board;
-      if (!board || board.id !== retrying.id) return;
+      // The board id alone cannot say the claim taken above is still this tab's, because a switch
+      // away and back reuses it, and a retry that wrote while another tab held the board would be
+      // exactly the overwrite the lease exists to stop.
+      if (!board || !stillHolds(lease, retrying.id)) return;
       const savedRevision = useBoardStore.getState().revision;
       // Holding the claim makes a write exclusive, not current. takeOverBoard closes that gap by
       // reloading the stored document before it allows editing; this path cannot reload, because
@@ -404,12 +432,17 @@ export function useBoardPersistence(): PersistenceController {
       // evidence about storage this session depends on rather than about the board picked, and
       // the session-only status is what has something left to say. Leaving that path to the
       // "unreadable" return would strand the tab pending: no banner, and no edits ever again.
-      if (!handedOver && useBoardStore.getState().board?.id !== boardId) return "unreadable";
+      const reachedScreen = useBoardStore.getState().board?.id === boardId;
+      if (!handedOver && !reachedScreen) return "unreadable";
       // Everything that can still throw here is a write - the last-opened key, the migration
       // write-back, starting the coordinator - so a full-storage failure must say so rather than
       // report that the board could not be read.
       enterSessionOnly(normalizePersistenceError(error, "write"));
-      return "opened";
+      // A throw from the claim itself leaves the pick short of the screen: the user is still
+      // looking at the board they had, under the name they had, so reporting "opened" would close
+      // the menu over a click that looks ignored while that board has quietly stopped being saved.
+      // Neither half is guessable, and only a non-opened outcome keeps the menu up to say both.
+      return reachedScreen ? "opened" : "handover-failed";
     }
   }, [claim, drainCoordinator, enterSessionOnly, flushViewport, rememberStored, repository, settleOpenBoard, startCoordinator]);
 
