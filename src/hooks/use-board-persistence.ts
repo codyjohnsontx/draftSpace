@@ -67,12 +67,14 @@ export function useBoardPersistence(): PersistenceController {
     return outgoing.settle();
   }, []);
 
-  const startCoordinator = useCallback(async () => {
+  /** `savedRevision` is for the caller that already wrote the board itself; see retryStorage. */
+  const startCoordinator = useCallback(async (savedRevision = 0) => {
     await drainCoordinator();
     const nextCoordinator = new AutosaveCoordinator({
       repository,
       getBoard: () => useBoardStore.getState().board,
       getRevision: () => useBoardStore.getState().revision,
+      savedRevision,
       onStateChange: handleAutosaveEvent,
     });
     coordinator.current = nextCoordinator;
@@ -181,7 +183,10 @@ export function useBoardPersistence(): PersistenceController {
       usePersistenceStore.getState().markSaving(savedRevision);
       const existing = await repository.getRawById(board.id);
       if (existing === null) await repository.create(board); else await repository.update(board);
-      localStorage.setItem(LAST_BOARD, board.id); const activeCoordinator = await startCoordinator();
+      // This path writes the board itself and never calls setBoard, so the store's revision stays
+      // where it was. A coordinator started at 0 would read that persisted revision as unsaved and
+      // make the next switch redo the write - and refuse the switch if the redundant write failed.
+      localStorage.setItem(LAST_BOARD, board.id); const activeCoordinator = await startCoordinator(savedRevision);
       usePersistenceStore.getState().markSaved(savedRevision, new Date().toISOString());
       const latestRevision = useBoardStore.getState().revision;
       if (latestRevision > savedRevision) activeCoordinator.schedule(latestRevision);

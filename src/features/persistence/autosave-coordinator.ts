@@ -15,6 +15,11 @@ export type AutosaveCoordinatorOptions = {
   repository: BoardRepository;
   getBoard: () => BoardDocument | null;
   getRevision: () => number;
+  /**
+   * What storage already holds, for the caller that wrote the board itself rather than through a
+   * coordinator. Left at 0 a fresh coordinator treats an already-persisted revision as unsaved.
+   */
+  savedRevision?: number;
   debounceMs?: number;
   retryDelaysMs?: number[];
   onStateChange: (event: AutosaveEvent) => void;
@@ -33,6 +38,7 @@ export class AutosaveCoordinator {
   private readonly retryDelays: number[];
 
   constructor(private readonly options: AutosaveCoordinatorOptions) {
+    this.savedRevision = options.savedRevision ?? 0;
     this.debounceMs = options.debounceMs ?? 500;
     this.retryDelays = options.retryDelaysMs ?? [1000, 2000, 4000];
   }

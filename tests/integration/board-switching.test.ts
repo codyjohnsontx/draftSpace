@@ -184,6 +184,49 @@ describe("opening a second board", () => {
     session.unmount(); update.mockRestore();
   });
 
+  it("does not redo a write the storage retry already made, or refuse the switch when it fails", async () => {
+    const { first, second } = await seedTwoBoards();
+    const session = await openDraftspace();
+    await act(async () => { useBoardStore.getState().createShape("rectangle", { x: 10, y: 10, width: 80, height: 60 }); });
+
+    // The board's autosave fails, which is what puts "Retry storage" in front of the user.
+    const failing = vi.spyOn(IndexedDbBoardRepository.prototype, "update").mockRejectedValue(new Error("QuotaExceededError"));
+    await act(async () => { await session.result.current.retrySave(); });
+    failing.mockRestore();
+
+    // The retry then succeeds and writes the board itself, so every edit is on disk.
+    await act(async () => { await session.result.current.retryStorage(); });
+    expect(usePersistenceStore.getState().status).toBe("saved");
+    expect((await storedBoard(first.id)).elementIds).toHaveLength(1);
+    const persistedRevision = useBoardStore.getState().revision;
+    expect(persistedRevision).toBeGreaterThan(0);
+
+    // Switching now must not write the outgoing board again: storage already holds that revision.
+    const update = vi.spyOn(IndexedDbBoardRepository.prototype, "update");
+    let outcome: OpenBoardOutcome = "unsaved-work";
+    await act(async () => { outcome = await session.result.current.openBoard(second.id); });
+    expect(outcome).toBe("opened");
+    expect(update).not.toHaveBeenCalled();
+    expect(useBoardStore.getState().board?.id).toBe(second.id);
+    session.unmount(); update.mockRestore();
+  });
+
+  // A retry whose own write fails must still refuse the switch - the seeding above must not make
+  // genuinely unsaved work look saved.
+  it("still refuses the switch when the retry that seeded the coordinator did not persist", async () => {
+    const { first, second } = await seedTwoBoards();
+    const session = await openDraftspace();
+    await act(async () => { useBoardStore.getState().createShape("rectangle", { x: 10, y: 10, width: 80, height: 60 }); });
+    const update = vi.spyOn(IndexedDbBoardRepository.prototype, "update").mockRejectedValue(new Error("QuotaExceededError"));
+    await act(async () => { await session.result.current.retryStorage(); });
+
+    let outcome: OpenBoardOutcome = "opened";
+    await act(async () => { outcome = await session.result.current.openBoard(second.id); });
+    expect(outcome).toBe("unsaved-work");
+    expect(useBoardStore.getState().board?.id).toBe(first.id);
+    session.unmount(); update.mockRestore();
+  });
+
   it("keeps the open board's history when storage throws during a pick", async () => {
     const { first, second } = await seedTwoBoards();
     const session = await openDraftspace();
