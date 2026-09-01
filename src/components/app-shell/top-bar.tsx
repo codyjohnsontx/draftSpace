@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 import { Boxes, Download, HelpCircle, Menu, PencilRuler, Radio, Redo2, SlidersHorizontal, Undo2, UserRoundPlus } from "lucide-react";
 import { useBoardStore } from "@/stores/board-store";
+import { BoardSwitcher } from "./board-switcher";
 import { PersistenceStatus } from "./persistence-status";
 import type { PersistenceController } from "@/hooks/use-board-persistence";
 import { Tooltip } from "@/components/ui/tooltip";
@@ -21,6 +22,7 @@ export function TopBar({ persistence }: { persistence?: PersistenceController })
   const [inspectorMenuOpen, setInspectorMenuOpen] = useState(false);
   const [shareOpen, setShareOpen] = useState(false); const collaborationMode = useCollaborationStore((state) => state.mode); const collaborationStatus = useCollaborationStore((state) => state.status); const collaborationRole = useCollaborationStore((state) => state.role); const collaborationSelf = useCollaborationStore((state) => state.self); const participantCount = useCollaborationStore((state) => Object.keys(state.participants).length + 1); const pendingCount = useCollaborationStore((state) => Object.keys(state.pending).length);
   const guestReadOnly = collaborationMode === "guest" && (collaborationStatus !== "connected" || collaborationRole !== "editor");
+  const hostingLiveRoom = collaborationMode === "host" && !["ended", "error"].includes(collaborationStatus);
   const actorId = collaborationSelf?.id ?? "local";
   const canUndo = history.undo.some((entry) => entry.metadata?.actorId === actorId);
   const canRedo = history.redo.some((entry) => entry.metadata?.actorId === actorId);
@@ -37,7 +39,14 @@ export function TopBar({ persistence }: { persistence?: PersistenceController })
   return <header className="top-bar" aria-label="Board controls">
     <div className="brand-lockup"><span className="brand-mark" aria-hidden="true"><i /><i /></span><strong>Draftspace</strong></div>
     <Tooltip className="mobile-only" side="bottom" align="start" label="Board menu" description="Board options — coming soon">{(tooltipId) => <button type="button" className="icon-button" aria-label="Board menu" aria-describedby={tooltipId}><Menu size={18} /></button>}</Tooltip>
-    <input key={board.name} className="board-name" aria-label="Board name" defaultValue={board.name} disabled={guestReadOnly} onBlur={(e) => rename(e.currentTarget.value)} onKeyDown={(e) => { if (e.key === "Enter") e.currentTarget.blur(); }} />
+    <div className="board-identity">
+      <input key={board.name} className="board-name" aria-label="Board name" defaultValue={board.name} disabled={guestReadOnly} onBlur={(e) => rename(e.currentTarget.value)} onKeyDown={(e) => { if (e.key === "Enter") e.currentTarget.blur(); }} />
+      {/* A guest is in someone else's room, so the local board list is not theirs to switch. A
+          host's room is served from the board that is open, so swapping it under a room that is
+          still live server-side, including one the host is reconnecting to, would leave every
+          guest on a board the host is no longer editing. */}
+      {persistence && collaborationMode !== "guest" && !hostingLiveRoom && <BoardSwitcher controller={persistence} />}
+    </div>
     <div className="top-actions">
       {persistence ? <PersistenceStatus controller={persistence} /> : <LiveRoomStatus />}
       <Tooltip side="bottom" label={viewMode === "canvas" ? "3D space" : "2D canvas"} description={viewMode === "canvas" ? "View this board as a tiered 3D system diagram" : "Back to the flat whiteboard"}>{(tooltipId) => <button type="button" className={`icon-button ${viewMode === "space" ? "live" : ""}`} aria-label={viewMode === "canvas" ? "Switch to 3D space" : "Switch to 2D canvas"} aria-describedby={tooltipId} onClick={() => useUiPreferencesStore.getState().setViewMode(viewMode === "canvas" ? "space" : "canvas")}>{viewMode === "canvas" ? <Boxes size={17} /> : <PencilRuler size={17} />}</button>}</Tooltip>

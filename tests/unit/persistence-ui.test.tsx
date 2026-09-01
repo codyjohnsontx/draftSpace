@@ -6,7 +6,7 @@ import { usePersistenceStore, type RecoveryPayload } from "@/stores/persistence-
 import type { PersistenceController } from "@/hooks/use-board-persistence";
 import { persistenceError } from "@/features/persistence/persistence-errors";
 
-const controller = (): PersistenceController => ({ retrySave: vi.fn(), retryStorage: vi.fn(), startNewBoard: vi.fn(), downloadRecovery: vi.fn(), downloadCurrentBackup: vi.fn() });
+const controller = (): PersistenceController => ({ retrySave: vi.fn(), retryStorage: vi.fn(), startNewBoard: vi.fn(), openBoard: vi.fn().mockResolvedValue("opened"), downloadRecovery: vi.fn(), downloadCurrentBackup: vi.fn() });
 const recovery: RecoveryPayload = { boardId: "broken", raw: { bad: true }, detectedAt: new Date().toISOString(), reason: "invalid", issues: ["name: Required"] };
 
 beforeEach(() => usePersistenceStore.setState({ status: "saved", error: null, recovery: null, networkOnline: true, savedRevision: 0, attemptedRevision: null, lastSavedAt: null }));

@@ -15,6 +15,11 @@ export type AutosaveCoordinatorOptions = {
   repository: BoardRepository;
   getBoard: () => BoardDocument | null;
   getRevision: () => number;
+  /**
+   * What storage already holds, for the caller that wrote the board itself rather than through a
+   * coordinator. Left at 0 a fresh coordinator treats an already-persisted revision as unsaved.
+   */
+  savedRevision?: number;
   debounceMs?: number;
   retryDelaysMs?: number[];
   onStateChange: (event: AutosaveEvent) => void;
@@ -27,10 +32,13 @@ export class AutosaveCoordinator {
   private retryIndex = 0;
   private activeSave: Promise<void> | null = null;
   private disposed = false;
+  private savedRevision = 0;
+  private lastWriteError: PersistenceError | null = null;
   private readonly debounceMs: number;
   private readonly retryDelays: number[];
 
   constructor(private readonly options: AutosaveCoordinatorOptions) {
+    this.savedRevision = options.savedRevision ?? 0;
     this.debounceMs = options.debounceMs ?? 500;
     this.retryDelays = options.retryDelaysMs ?? [1000, 2000, 4000];
   }
@@ -62,9 +70,12 @@ export class AutosaveCoordinator {
     this.activeSave = this.options.repository.update(snapshot).then(() => {
       recordPerformanceSample({ name: "indexeddb-save", durationMs: performanceNow() - saveStartedAt, elementCount: snapshot.elementIds.length });
       this.retryIndex = 0;
+      this.lastWriteError = null;
+      this.savedRevision = Math.max(this.savedRevision, revision);
       if (this.options.getRevision() === revision) this.options.onStateChange({ type: "saved", revision, savedAt: new Date().toISOString() });
     }).catch((cause) => {
       const error = normalizePersistenceError(cause, "write");
+      this.lastWriteError = error;
       if (this.retryIndex < this.retryDelays.length) {
         const delay = this.retryDelays[this.retryIndex++];
         this.retryTimer = setTimeout(() => { this.retryTimer = null; this.activeSave = null; void this.flush("manual"); }, delay);
@@ -80,6 +91,31 @@ export class AutosaveCoordinator {
   async retry() {
     this.retryIndex = 0; this.clearTimer("retry"); this.activeSave = null;
     await this.flush("manual");
+  }
+
+  /** Board state this coordinator holds that storage has not accepted, whether waiting or failed. */
+  private hasUnsavedWork(): boolean {
+    return this.pendingRevision !== null || this.retryTimer !== null || this.activeSave !== null || this.options.getRevision() > this.savedRevision;
+  }
+
+  /**
+   * Writes everything this coordinator still holds and reports whether storage took it. A caller
+   * about to let go of the board asks this rather than `flush`: a retry waiting out its backoff is
+   * attempted now instead of skipped, and a write storage will not accept is answered with `false`
+   * rather than dropped on the next `drain`. Unlike `retry` this spends the backoff ladder it was
+   * handed instead of starting a fresh one, and it leaves the failure on the status it reports to.
+   */
+  async settle(): Promise<boolean> {
+    if (this.disposed || !this.options.getBoard()) return true;
+    if (!this.retryTimer && this.activeSave) await this.activeSave;
+    for (let attempt = 0; attempt < 3 && this.hasUnsavedWork(); attempt += 1) {
+      this.clearTimer("retry"); this.activeSave = null;
+      await this.flush("manual");
+      if (this.lastWriteError) break;
+    }
+    if (!this.hasUnsavedWork()) return true;
+    if (this.lastWriteError) this.options.onStateChange({ type: "failed", error: this.lastWriteError });
+    return false;
   }
 
   async drain() {

@@ -166,9 +166,12 @@ This roadmap favors interaction trust over feature count. Draftspace should earn
 
 **Goal:** Let users confidently manage and share local work.
 
+**Delivered ahead of the phase.** Reaching a second board could not wait for the rest of board management: until the switcher below, a browser holding more than one board could reach only the last-opened one, and every other board it held was stranded. It shipped on the repository listing that already existed and does nothing but open and switch. Everything else here keeps its place in the sequence.
+
 - Draftspace JSON import/export with migrations
 - PNG and SVG export
 - Selection and full-board export options
+- [x] Board switcher over the stored boards *(opening and switching only)*
 - Recent-board browser
 - Create, rename, duplicate, and delete board flows
 - Keyboard-shortcut reference

@@ -4,6 +4,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { createBoard, useBoardStore } from "@/stores/board-store";
 import { usePersistenceStore } from "@/stores/persistence-store";
 import { IndexedDbBoardRepository } from "@/repositories/indexeddb-board-repository";
+import { useSessionStore } from "@/stores/session-store";
 import { useViewportStore } from "@/stores/viewport-store";
 import { AutosaveCoordinator, type AutosaveEvent } from "@/features/persistence/autosave-coordinator";
 import { loadBoardDocument } from "@/features/persistence/load-board-document";
@@ -19,10 +20,17 @@ const finishBackup = (result: BackupResult) => {
   if (!download.ok) usePersistenceStore.getState().setError(download.error);
 };
 
+/**
+ * Whether a picked board is now the open one, and when it is not, which board stood in the way:
+ * the picked one could not be read, or the open one still holds work storage would not take.
+ */
+export type OpenBoardOutcome = "opened" | "unreadable" | "unsaved-work";
+
 export type PersistenceController = {
   retrySave: () => Promise<void>;
   retryStorage: () => Promise<void>;
   startNewBoard: () => Promise<void>;
+  openBoard: (boardId: string) => Promise<OpenBoardOutcome>;
   downloadRecovery: () => Promise<void>;
   downloadCurrentBackup: () => Promise<void>;
 };
@@ -33,6 +41,7 @@ export function useBoardPersistence(): PersistenceController {
   const viewportTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const initialized = useRef(false);
   const revision = useBoardStore((state) => state.revision);
+  const openBoardId = useBoardStore((state) => state.board?.id ?? null);
 
   const handleAutosaveEvent = useCallback((event: AutosaveEvent) => {
     const state = usePersistenceStore.getState();
@@ -47,12 +56,25 @@ export function useBoardPersistence(): PersistenceController {
     await current?.drain();
   }, []);
 
-  const startCoordinator = useCallback(async () => {
+  /**
+   * The one gate the open board's work passes before anything lets go of it. A coordinator that
+   * cannot be asked - because there is none, or because storage has already been given up on -
+   * holds work nothing will ever write, so it answers the same as a write storage refused.
+   */
+  const settleOpenBoard = useCallback(async () => {
+    const outgoing = coordinator.current;
+    if (!outgoing || usePersistenceStore.getState().status === "session-only") return false;
+    return outgoing.settle();
+  }, []);
+
+  /** `savedRevision` is for the caller that already wrote the board itself; see retryStorage. */
+  const startCoordinator = useCallback(async (savedRevision = 0) => {
     await drainCoordinator();
     const nextCoordinator = new AutosaveCoordinator({
       repository,
       getBoard: () => useBoardStore.getState().board,
       getRevision: () => useBoardStore.getState().revision,
+      savedRevision,
       onStateChange: handleAutosaveEvent,
     });
     coordinator.current = nextCoordinator;
@@ -65,12 +87,21 @@ export function useBoardPersistence(): PersistenceController {
     useBoardStore.getState().persistViewport(useViewportStore.getState().viewport);
   }, []);
 
+  /** A board that is already open is left exactly as it is: `setBoard` would drop its history. */
   const enterSessionOnly = useCallback((error: unknown) => {
-    const board = useBoardStore.getState().board ?? createBoard("Temporary draft");
-    useBoardStore.getState().setBoard(board);
-    useViewportStore.getState().setViewport(board.viewport);
+    if (!useBoardStore.getState().board) {
+      const board = createBoard("Temporary draft");
+      useBoardStore.getState().setBoard(board);
+      useViewportStore.getState().setViewport(board.viewport);
+    }
     usePersistenceStore.getState().enterSessionOnly(normalizePersistenceError(error, "read"));
   }, []);
+
+  /** Re-reads which boards this browser holds. Failing to list them must never disturb the open board. */
+  const refreshBoards = useCallback(async () => {
+    try { usePersistenceStore.getState().setBoards(await repository.list()); }
+    catch (error) { console.debug("Draftspace could not list local boards", error); }
+  }, [repository]);
 
   useEffect(() => {
     if (initialized.current) return; initialized.current = true;
@@ -110,6 +141,10 @@ export function useBoardPersistence(): PersistenceController {
 
   useEffect(() => () => coordinator.current?.dispose(), []);
 
+  // Read the list once a board is open rather than on the path that blocks first paint. This
+  // covers every way the open board changes: first load, recovery, storage retry, and switching.
+  useEffect(() => { if (openBoardId) void refreshBoards(); }, [openBoardId, refreshBoards]);
+
   useEffect(() => {
     if (!initialized.current || revision === 0) return;
     coordinator.current?.schedule(revision);
@@ -125,14 +160,18 @@ export function useBoardPersistence(): PersistenceController {
   }, [flushViewport]);
 
   useEffect(() => {
-    const visibility = () => { if (document.visibilityState === "hidden") { flushViewport(); void coordinator.current?.flush("visibility"); } };
+    const visibility = () => {
+      if (document.visibilityState === "hidden") { flushViewport(); void coordinator.current?.flush("visibility"); return; }
+      // Another tab may have added a board while this one sat in the background.
+      void refreshBoards();
+    };
     const pagehide = () => { flushViewport(); void coordinator.current?.flush("pagehide"); };
     const online = () => usePersistenceStore.getState().setNetworkOnline(true);
     const offline = () => usePersistenceStore.getState().setNetworkOnline(false);
     document.addEventListener("visibilitychange", visibility); window.addEventListener("pagehide", pagehide);
     window.addEventListener("online", online); window.addEventListener("offline", offline);
     return () => { document.removeEventListener("visibilitychange", visibility); window.removeEventListener("pagehide", pagehide); window.removeEventListener("online", online); window.removeEventListener("offline", offline); };
-  }, [flushViewport]);
+  }, [flushViewport, refreshBoards]);
 
   const retrySave = useCallback(async () => { await coordinator.current?.retry(); }, []);
 
@@ -144,7 +183,10 @@ export function useBoardPersistence(): PersistenceController {
       usePersistenceStore.getState().markSaving(savedRevision);
       const existing = await repository.getRawById(board.id);
       if (existing === null) await repository.create(board); else await repository.update(board);
-      localStorage.setItem(LAST_BOARD, board.id); const activeCoordinator = await startCoordinator();
+      // This path writes the board itself and never calls setBoard, so the store's revision stays
+      // where it was. A coordinator started at 0 would read that persisted revision as unsaved and
+      // make the next switch redo the write - and refuse the switch if the redundant write failed.
+      localStorage.setItem(LAST_BOARD, board.id); const activeCoordinator = await startCoordinator(savedRevision);
       usePersistenceStore.getState().markSaved(savedRevision, new Date().toISOString());
       const latestRevision = useBoardStore.getState().revision;
       if (latestRevision > savedRevision) activeCoordinator.schedule(latestRevision);
@@ -167,6 +209,60 @@ export function useBoardPersistence(): PersistenceController {
     catch (error) { enterSessionOnly(normalizePersistenceError(error, "write")); }
   }, [drainCoordinator, enterSessionOnly, repository, startCoordinator]);
 
+  /**
+   * Opens another stored board in place. The board being left is settled first: whatever is still
+   * inside the autosave debounce, or still waiting out a retry, belongs to it, and once its
+   * coordinator is drained nothing else will ever write it. Work storage will not take holds the
+   * switch back rather than being discarded behind a menu that reported success.
+   */
+  const openBoard = useCallback(async (boardId: string): Promise<OpenBoardOutcome> => {
+    if (useBoardStore.getState().board?.id === boardId) return "opened";
+    const persistence = usePersistenceStore.getState();
+    try {
+      // Read the target before letting go of the open board. The list only offers boards that
+      // parsed, so an unreadable one here means another tab changed it; leaving the open board
+      // untouched beats stranding it on a recovery screen it did not cause. The list keeps the
+      // row so the menu can say so, rather than dropping it and closing over a click that did
+      // nothing; the next refresh picks the removal up.
+      const result = loadBoardDocument(boardId, await repository.getRawById(boardId));
+      if (result.kind !== "ready") return "unreadable";
+      flushViewport();
+      if (!(await settleOpenBoard())) return "unsaved-work";
+      persistence.markLoading();
+      await drainCoordinator();
+      useBoardStore.getState().setBoard(result.board);
+      // Selection, history and any in-flight style preview belong to the board that was open, not
+      // to this one. Previews are keyed by element id, and two boards can hold the same ids - a
+      // recovered copy is exactly that - so a preview left behind would repaint the new board and
+      // finishPreview would commit the old board's patch against it.
+      useSessionStore.getState().setSelected([]);
+      useSessionStore.getState().setStylePreview(null);
+      useSessionStore.getState().setConnectorStylePreview(null);
+      useViewportStore.getState().setViewport(result.board.preferences.restoreViewport ? result.board.viewport : { x: 0, y: 0, zoom: 1 });
+      localStorage.setItem(LAST_BOARD, result.board.id);
+      if (result.migrated) await repository.update(result.board);
+      const activeCoordinator = await startCoordinator();
+      persistence.markSaved(0, new Date().toISOString());
+      // An edit made while the swap was still awaiting storage has no coordinator to schedule it.
+      const latestRevision = useBoardStore.getState().revision;
+      if (latestRevision > 0) activeCoordinator.schedule(latestRevision);
+      return "opened";
+    } catch (error) {
+      console.error("Draftspace could not open that board", error);
+      // Only a throw once the swap has happened is evidence about storage this session depends on:
+      // the picked board is on screen with its predecessor's coordinator already drained, so the
+      // row must not also claim it could not be opened and the session-only status is what has
+      // something left to say. Before the swap the open board and its autosave are untouched, so
+      // reading the picked one is the only thing that failed, and the row already reports that.
+      if (useBoardStore.getState().board?.id !== boardId) return "unreadable";
+      // Everything that can still throw here is a write - the last-opened key, the migration
+      // write-back, starting the coordinator - so a full-storage failure must say so rather than
+      // report that the board could not be read.
+      enterSessionOnly(normalizePersistenceError(error, "write"));
+      return "opened";
+    }
+  }, [drainCoordinator, enterSessionOnly, flushViewport, repository, settleOpenBoard, startCoordinator]);
+
   const downloadRecovery = useCallback(async () => {
     const recovery = usePersistenceStore.getState().recovery; if (!recovery) return;
     finishBackup(serializeRecoveryBackup(recovery));
@@ -177,5 +273,5 @@ export function useBoardPersistence(): PersistenceController {
     finishBackup(serializeBoardBackup(board));
   }, []);
 
-  return { retrySave, retryStorage, startNewBoard, downloadRecovery, downloadCurrentBackup };
+  return { retrySave, retryStorage, startNewBoard, openBoard, downloadRecovery, downloadCurrentBackup };
 }
