@@ -60,7 +60,7 @@ The 1,000-element baseline meets the Phase 1.2B product targets without conditio
 
 ## Browser capability boundary
 
-Canvas 2D is the only browser capability that blocks the working surface. Without it, Draftspace replaces the canvas with an accessible support screen and offers an emergency backup when a validated board is loaded. Resize observation, structured cloning, ID generation, rounded rectangle paths, and clipboard access use focused local fallbacks. Blob downloads retain the existing backup failure path; service workers remain optional; and IndexedDB retains the Phase 1.2A session-only behavior. No general polyfill package is used.
+Canvas 2D is the only browser capability that blocks the working surface. Without it, Draftspace replaces the canvas with an accessible support screen and offers an emergency backup when a validated board is loaded. Resize observation, structured cloning, ID generation, rounded rectangle paths, and clipboard access use focused local fallbacks. Blob downloads retain the existing backup failure path; service workers remain optional; and IndexedDB retains the Phase 1.2A session-only behavior. Web Locks, which the board claim is built on, is optional in the same way: its absence relaxes board ownership rather than blocking anything, and "One tab owns a board" above records what a browser without it does. No general polyfill package is used.
 
 ## Schema evolution
 
