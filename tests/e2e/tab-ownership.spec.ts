@@ -78,6 +78,41 @@ const installStorageFailures = (page: Page, initial: StorageFailures = {}) => pa
 const failStorage = (page: Page, next: StorageFailures) =>
   page.evaluate((value) => (window as unknown as { failDraftspaceStorage: (next: StorageFailures) => void }).failDraftspaceStorage(value), next);
 
+/**
+ * Slows this page's lock acquisition so a test can act inside a claim that is still in flight.
+ * The retry path takes a claim and reads storage before it writes, and a session-only tab stays
+ * editable throughout, so that gap is reachable by an ordinary user drawing.
+ */
+const delayLockRequests = (page: Page, ms: number) => page.addInitScript((delay: number) => {
+  const locks = navigator.locks;
+  if (typeof locks?.request !== "function") return;
+  const request = locks.request.bind(locks) as (...args: unknown[]) => Promise<unknown>;
+  Object.defineProperty(navigator, "locks", {
+    configurable: true,
+    value: { request: async (...args: unknown[]) => { await new Promise((settle) => setTimeout(settle, delay)); return request(...args); } },
+  });
+}, ms);
+
+/**
+ * Breaks this page's lock acquisition from the nth request on, so a claim fails mid-handover.
+ * It throws rather than rejecting: a rejected request is already handled, since the lease treats
+ * a refusal as "someone else has it" and stays read-only. A synchronous throw is the one that
+ * escapes the lease and reaches the caller mid-transition.
+ */
+const failLockRequestsAfter = (page: Page, calls: number) => page.addInitScript((allowed: number) => {
+  const locks = navigator.locks;
+  if (typeof locks?.request !== "function") return;
+  const request = locks.request.bind(locks) as (...args: unknown[]) => Promise<unknown>;
+  let seen = 0;
+  Object.defineProperty(navigator, "locks", {
+    configurable: true,
+    value: { request: (...args: unknown[]) => {
+      if (++seen > allowed) throw new DOMException("Draftspace test broke this claim", "NotSupportedError");
+      return request(...args);
+    } },
+  });
+}, calls);
+
 type StoredBoard = { id: string; name: string; shapes: Array<{ x: number; y: number }> };
 
 /** Every board in storage, not just the last-opened one, so a second record cannot hide. */
@@ -342,4 +377,52 @@ test("the claim follows a board switch rather than leaving two writers on one bo
   const before = await storedBoards(owner);
   await drawRectangle(owner, 800, 450, 940, 550);
   expect(await storedBoards(owner)).toEqual(before);
+});
+
+/**
+ * The retry path claims the board and reads storage before it writes, and a session-only tab is
+ * editable for all of it. It used to write the document captured before those awaits while
+ * reporting the revision reached after them as saved, so an edit made in between was written
+ * nowhere and nothing was left to schedule it: the shape was gone with the UI saying "Saved".
+ */
+test("keeps an edit made while the retry is still claiming the board", async ({ browserName, page }) => {
+  await installStorageFailures(page, { writes: true });
+  await delayLockRequests(page, 900);
+  await openBoard(page);
+  await expect(saveStatus(page)).toHaveText("Not saving");
+
+  await failStorage(page, { writes: false });
+  await drawRectangle(page, 200, 200, 340, 300);
+
+  // The clicks return as soon as the retry is under way, and the claim it takes is slow on this
+  // page, so this second shape is drawn while retryStorage sits between its awaits.
+  await retryStorage(page, browserName);
+  await drawRectangle(page, 700, 200, 840, 300);
+
+  await expect(saveStatus(page)).toHaveText("Saved locally");
+  await expect.poll(() => storedShapePositions(page)).toEqual([{ x: 200, y: 200 }, { x: 700, y: 200 }]);
+});
+
+/**
+ * A switch releases the outgoing claim before it takes the next one, so access reports `pending`
+ * across that gap and nothing may edit during it. A claim that then fails outright must not leave
+ * the tab sitting there: `pending` renders no banner and refuses every edit, so a stuck one is a
+ * silent lockout, which is the one failure this whole design exists to rule out.
+ */
+test("does not strand a tab when the claim on the board it is switching to fails", async ({ browserName, page }) => {
+  // One claim for the board this opens with, then the switch's claim is the one that breaks.
+  await failLockRequestsAfter(page, 1);
+  await openBoard(page);
+  await boardName(page).fill("First board"); await boardName(page).press("Enter");
+  await drawRectangle(page, 200, 200, 340, 300);
+  await startASecondBoard(page, "Second board");
+
+  await switchToBoard(page, browserName, "First board");
+
+  // Whatever it decides, the tab has to end up somewhere a user can act from: it says nothing is
+  // being saved and stays editable, rather than silently refusing input with nothing on screen.
+  await expect(saveStatus(page)).toHaveText("Not saving");
+  await expect(page.getByRole("main", { name: "Draftspace infinite canvas" })).not.toHaveAttribute("data-readonly");
+  await drawRectangle(page, 700, 200, 840, 300);
+  await expect(page.getByRole("main", { name: "Draftspace infinite canvas" })).toHaveAttribute("data-element-count", "1");
 });

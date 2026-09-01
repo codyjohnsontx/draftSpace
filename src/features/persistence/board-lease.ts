@@ -17,8 +17,12 @@ const lockManager = (): LockManager | null =>
 
 export type BoardLeaseOptions = {
   boardId: string;
-  /** Runs once a read-only lease is promoted, after the owning tab let the board go. */
-  onPromoted?: () => void | Promise<void>;
+  /**
+   * Runs once a read-only lease is promoted, after the owning tab let the board go. It is
+   * handed the lease being promoted so work that resumes after an await can prove it is
+   * still acting for the claim it started with.
+   */
+  onPromoted?: (lease: BoardLease) => void | Promise<void>;
 };
 
 export class BoardLease {
@@ -29,7 +33,7 @@ export class BoardLease {
   private constructor(
     readonly boardId: string,
     private owner: boolean,
-    private readonly onPromoted?: () => void | Promise<void>,
+    private readonly onPromoted?: (lease: BoardLease) => void | Promise<void>,
   ) {}
 
   /** True while this tab is the one allowed to edit and save the board. */
@@ -80,7 +84,7 @@ export class BoardLease {
       this.waiter = null;
       this.owner = true;
       const held = new Promise<void>((release) => { this.releaseHeld = release; });
-      void Promise.resolve(this.onPromoted?.()).catch((error) => console.error("Draftspace could not take over this board", error));
+      void Promise.resolve(this.onPromoted?.(this)).catch((error) => console.error("Draftspace could not take over this board", error));
       return held;
     }).catch(() => { /* Aborted by release(), or the lock manager refused the wait. Either way this tab stays read-only. */ });
   }
@@ -99,6 +103,13 @@ export async function claimBoard(options: BoardLeaseOptions): Promise<BoardLease
   current = lease;
   return lease;
 }
+
+/**
+ * Whether this exact lease is still the one the tab holds. A board id cannot answer that:
+ * switching away and back reuses it, so a callback resuming after an await would pass a
+ * board-id check while acting for a claim that was released and replaced in between.
+ */
+export const boardClaimIsCurrent = (lease: BoardLease) => current === lease && lease.isOwner;
 
 export function releaseBoardClaim() {
   current?.release();

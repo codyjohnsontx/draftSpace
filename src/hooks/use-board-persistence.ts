@@ -10,7 +10,7 @@ import { AutosaveCoordinator, type AutosaveEvent } from "@/features/persistence/
 import { loadBoardDocument } from "@/features/persistence/load-board-document";
 import { downloadBackup, serializeBoardBackup, serializeRecoveryBackup, type BackupResult } from "@/features/persistence/backup";
 import { normalizePersistenceError, persistenceError } from "@/features/persistence/persistence-errors";
-import { claimBoard, releaseBoardClaim } from "@/features/persistence/board-lease";
+import { boardClaimIsCurrent, claimBoard, releaseBoardClaim, type BoardLease } from "@/features/persistence/board-lease";
 import { storedRecordMovedOn, type StoredBoardStamp } from "@/features/persistence/stored-board-stamp";
 import { newId, now } from "@/core/board/factory";
 import type { BoardDocument } from "@/core/board/types";
@@ -130,16 +130,18 @@ export function useBoardPersistence(): PersistenceController {
    * stored document replaces this tab's stale copy before any editing is allowed. Skipping
    * that would simply move the overwrite later.
    */
-  const takeOverBoard = useCallback(async (boardId: string) => {
+  const takeOverBoard = useCallback(async (lease: BoardLease) => {
+    const boardId = lease.boardId;
     const persistence = usePersistenceStore.getState();
     // This tab holds the lock from here on, so every path out of this function has to grant it
     // edit rights. Granting them only after the stored document is on screen is the point:
     // an edit accepted against the stale copy would be dropped by the reload that follows it.
     try {
       const result = loadBoardDocument(boardId, await repository.getRawById(boardId));
-      // The tab switched boards while this promotion was in flight. Its claim on that board was
-      // released and the open one has its own; adopting this document would overwrite the screen.
-      if (useBoardStore.getState().board?.id !== boardId) return;
+      // The tab may have switched boards while this promotion was in flight. The board id cannot
+      // settle that on its own, because switching away and back reuses it, so this asks whether
+      // the lease that started the promotion is still the claim the tab holds.
+      if (!boardClaimIsCurrent(lease) || useBoardStore.getState().board?.id !== boardId) return;
       if (result.kind === "invalid") {
         persistence.setBoardAccess("owner");
         persistence.requireRecovery({ boardId: result.boardId, raw: result.raw, detectedAt: new Date().toISOString(), reason: "invalid", issues: result.issues }); return;
@@ -151,6 +153,10 @@ export function useBoardPersistence(): PersistenceController {
       // The viewport stays where the reader left it; only the document is replaced.
       if (result.kind === "ready") { useBoardStore.getState().setBoard(result.board); rememberStored(result.board); }
       await startCoordinator();
+      // startCoordinator awaits, so the claim is proved once more before this tab is told it may
+      // edit and save. A coordinator started for a board the tab no longer holds is disposed
+      // rather than drained: draining flushes, and that write is what this guard exists to stop.
+      if (!boardClaimIsCurrent(lease)) { coordinator.current?.dispose(); coordinator.current = null; return; }
       persistence.markSaved(useBoardStore.getState().revision, new Date().toISOString());
       // The one path that really is a handover, and the board is the one this tab was already
       // looking at, so it is the only one allowed to say another tab let this board go.
@@ -160,9 +166,24 @@ export function useBoardPersistence(): PersistenceController {
 
   /** Claims the board for this tab, or opens read-only when another tab already holds it. */
   const claim = useCallback(async (boardId: string) => {
-    const lease = await claimBoard({ boardId, onPromoted: () => takeOverBoard(boardId) });
-    usePersistenceStore.getState().setBoardAccess(lease.isOwner ? "owner" : "read-only");
-    return lease;
+    // Edit rights are never wider than the lease actually held, mid-transition included.
+    // claimBoard releases the outgoing lease before it acquires the next, so rights have to
+    // narrow before that call rather than after it returns: in between, this tab holds no
+    // claim, and commands dispatched against the board it just let go would be exactly the
+    // overwrite the lease exists to prevent.
+    const before = usePersistenceStore.getState().boardAccess;
+    usePersistenceStore.getState().setBoardAccess("pending");
+    try {
+      const lease = await claimBoard({ boardId, onPromoted: takeOverBoard });
+      usePersistenceStore.getState().setBoardAccess(lease.isOwner ? "owner" : "read-only");
+      return lease;
+    } catch (error) {
+      // A claim that never settles must not leave the tab pending. Pending shows no banner and
+      // refuses every edit, so a stuck one is a silent lockout: the caller decides what this tab
+      // may do next, and it cannot decide anything from a state that says "ask again later".
+      usePersistenceStore.getState().setBoardAccess(before);
+      throw error;
+    }
   }, [takeOverBoard]);
 
   const openFirstBoard = useCallback(async () => {
@@ -270,20 +291,26 @@ export function useBoardPersistence(): PersistenceController {
   const retryStorage = useCallback(async () => {
     try {
       await drainCoordinator();
-      const board = useBoardStore.getState().board; if (!board) return;
+      const retrying = useBoardStore.getState().board; if (!retrying) return;
       // Storage is back, but another tab may have claimed this board meanwhile. A tab that saves
       // nothing cannot overwrite that tab, so it keeps its draft and stays editable instead of
       // taking the lease: freezing it read-only would strand the work and a later promotion
       // would replace it with the stored document. The backup download is still there.
-      const lease = await claimBoard({ boardId: board.id });
+      const lease = await claimBoard({ boardId: retrying.id });
       if (!lease.isOwner) { enterSessionOnly(persistenceError("board-claimed-elsewhere", "Another tab claimed this board while storage was unavailable.", true)); return; }
       usePersistenceStore.getState().setBoardAccess("owner");
-      const existing = await repository.getRawById(board.id);
+      const existing = await repository.getRawById(retrying.id);
+      // A session-only tab stays editable throughout, so every await above is a window the user
+      // can draw in. Take the document and the revision it stands at together, after the last of
+      // them: writing the copy captured before the awaits while reporting the newer revision
+      // saved would drop the edit in between with the UI saying it had been stored.
+      const board = useBoardStore.getState().board;
+      if (!board || board.id !== retrying.id) return;
+      const savedRevision = useBoardStore.getState().revision;
       // Holding the claim makes a write exclusive, not current. takeOverBoard closes that gap by
       // reloading the stored document before it allows editing; this path cannot reload, because
       // the draft on screen is unsaved work, so it checks instead of assuming.
       if (storedRecordMovedOn(existing, board.id, storedStamp.current)) { await saveAsRecoveredCopy(board); return; }
-      const savedRevision = useBoardStore.getState().revision;
       usePersistenceStore.getState().markSaving(savedRevision);
       if (existing === null) await repository.create(board); else await repository.update(board);
       rememberStored(board);
@@ -300,6 +327,10 @@ export function useBoardPersistence(): PersistenceController {
   const startNewBoard = useCallback(async () => {
     await drainCoordinator();
     const board = createBoard("My first draft");
+    // markSaved deliberately preserves a notice, so without this the "saved as a copy" panel
+    // would go on naming a board that is no longer open. The takeover flag is cleared by the
+    // pending access this board's claim passes through.
+    usePersistenceStore.getState().setNotice(null);
     useBoardStore.getState().setBoard(board); useViewportStore.getState().setViewport(board.viewport);
     const savedRevision = useBoardStore.getState().revision;
     usePersistenceStore.getState().markSaving(savedRevision);
@@ -324,6 +355,7 @@ export function useBoardPersistence(): PersistenceController {
   const openBoard = useCallback(async (boardId: string): Promise<OpenBoardOutcome> => {
     if (useBoardStore.getState().board?.id === boardId) return "opened";
     const persistence = usePersistenceStore.getState();
+    let handedOver = false;
     try {
       // Read the target before letting go of the open board. The list only offers boards that
       // parsed, so an unreadable one here means another tab changed it; leaving the open board
@@ -338,6 +370,9 @@ export function useBoardPersistence(): PersistenceController {
       await drainCoordinator();
       // The board on screen and the claim change together. Claiming releases the outgoing board's
       // lock, so the tab that was reading this one is free to take it the moment this tab leaves.
+      // From here the outgoing claim is being released, so nothing after this can report that
+      // the picked board was the thing that failed.
+      handedOver = true;
       const lease = await claim(result.board.id);
       useBoardStore.getState().setBoard(result.board);
       // Selection, history and any in-flight style preview belong to the board that was open, not
@@ -363,12 +398,13 @@ export function useBoardPersistence(): PersistenceController {
       return "opened";
     } catch (error) {
       console.error("Draftspace could not open that board", error);
-      // Only a throw once the swap has happened is evidence about storage this session depends on:
-      // the picked board is on screen with its predecessor's coordinator already drained, so the
-      // row must not also claim it could not be opened and the session-only status is what has
-      // something left to say. Before the swap the open board and its autosave are untouched, so
-      // reading the picked one is the only thing that failed, and the row already reports that.
-      if (useBoardStore.getState().board?.id !== boardId) return "unreadable";
+      // Before the claim is handed over the open board and its autosave are untouched, so reading
+      // the picked one is the only thing that failed and the row already reports that. Once the
+      // handover starts, this tab has let its lease go and drained its coordinator, so a throw is
+      // evidence about storage this session depends on rather than about the board picked, and
+      // the session-only status is what has something left to say. Leaving that path to the
+      // "unreadable" return would strand the tab pending: no banner, and no edits ever again.
+      if (!handedOver && useBoardStore.getState().board?.id !== boardId) return "unreadable";
       // Everything that can still throw here is a write - the last-opened key, the migration
       // write-back, starting the coordinator - so a full-storage failure must say so rather than
       // report that the board could not be read.

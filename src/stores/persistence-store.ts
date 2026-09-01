@@ -8,8 +8,13 @@ export type PersistenceStatus = "loading" | "saving" | "saved" | "failed" | "ses
  * Whether this tab holds the board's lease. Only the owner edits and saves; every other
  * tab on the same board views it. Kept apart from `status` because a tab's right to edit
  * and its save state are independent facts.
+ *
+ * `pending` is the instant a claim is being handed over: the tab has let one lease go and
+ * has not been told about the next. It may not edit, because edit rights are never wider
+ * than the lease actually held, but it is not another tab's read-only view either and must
+ * not be described to the user as one.
  */
-export type BoardAccess = "owner" | "read-only";
+export type BoardAccess = "owner" | "pending" | "read-only";
 
 export type RecoveryPayload = {
   boardId: string;
@@ -54,7 +59,7 @@ type PersistenceStore = {
   markSaved: (revision: number, savedAt: string) => void;
   markFailed: (error: PersistenceError) => void;
   setError: (error: PersistenceError) => void;
-  setNotice: (notice: PersistenceError) => void;
+  setNotice: (notice: PersistenceError | null) => void;
   enterSessionOnly: (error: PersistenceError) => void;
   requireRecovery: (payload: RecoveryPayload) => void;
   clearRecovery: () => void;

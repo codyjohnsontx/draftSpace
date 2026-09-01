@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { BoardLease, claimBoard, releaseBoardClaim } from "@/features/persistence/board-lease";
+import { BoardLease, boardClaimIsCurrent, claimBoard, releaseBoardClaim } from "@/features/persistence/board-lease";
 
 const abortError = () => new DOMException("The request was aborted.", "AbortError");
 
@@ -29,7 +29,13 @@ function fakeLockManager() {
       await new Promise<void>((resolve, reject) => {
         if (options.signal?.aborted) { reject(abortError()); return; }
         waiters.set(name, [...(waiters.get(name) ?? []), resolve]);
-        options.signal?.addEventListener("abort", () => reject(abortError()));
+        options.signal?.addEventListener("abort", () => {
+          // The browser drops an aborted request from the queue. Leaving it here would let the
+          // next release be consumed by a waiter that is gone, so a second read-only tab would
+          // never be promoted and a real defect could hide behind the double.
+          waiters.set(name, (waiters.get(name) ?? []).filter((waiter) => waiter !== resolve));
+          reject(abortError());
+        });
       });
       return hold(name, callback);
     },
@@ -133,5 +139,54 @@ describe("board lease", () => {
     await claimBoard({ boardId: "board-1" });
     await claimBoard({ boardId: "board-2" });
     expect((await BoardLease.acquire({ boardId: "board-1" })).isOwner).toBe(true);
+  });
+});
+
+describe("board claim identity", () => {
+  it("hands a promotion the lease it was granted for", async () => {
+    withLocks(fakeLockManager());
+    let promotedWith: BoardLease | null = null;
+    const owner = await BoardLease.acquire({ boardId: "board-1" });
+    const reader = await BoardLease.acquire({ boardId: "board-1", onPromoted: (lease) => { promotedWith = lease; } });
+
+    owner.release();
+    await vi.waitFor(() => expect(promotedWith).toBe(reader));
+  });
+
+  /**
+   * The board id cannot tell a promotion whether it is still the claim the tab holds, because
+   * switching away and back reuses it. A promotion callback that resumes after an await has to
+   * prove its own lease is current, or it starts writing a board this tab no longer owns.
+   */
+  it("disowns a lease the tab has since replaced, even for the same board", async () => {
+    withLocks(fakeLockManager());
+    const first = await claimBoard({ boardId: "board-1" });
+    expect(boardClaimIsCurrent(first)).toBe(true);
+
+    await claimBoard({ boardId: "board-2" });
+    expect(boardClaimIsCurrent(first)).toBe(false);
+
+    // Back to the board it started on: the id matches again, the claim does not.
+    const third = await claimBoard({ boardId: "board-1" });
+    expect(boardClaimIsCurrent(first)).toBe(false);
+    expect(boardClaimIsCurrent(third)).toBe(true);
+  });
+
+  it("disowns a lease once the tab lets the board go", async () => {
+    withLocks(fakeLockManager());
+    const lease = await claimBoard({ boardId: "board-1" });
+    releaseBoardClaim();
+    expect(boardClaimIsCurrent(lease)).toBe(false);
+  });
+
+  it("promotes the second reader when the first one aborts its wait", async () => {
+    withLocks(fakeLockManager());
+    const owner = await BoardLease.acquire({ boardId: "board-1" });
+    const leaving = await BoardLease.acquire({ boardId: "board-1" });
+    const staying = await BoardLease.acquire({ boardId: "board-1" });
+
+    leaving.release();
+    owner.release();
+    await vi.waitFor(() => expect(staying.isOwner).toBe(true));
   });
 });
