@@ -31,7 +31,7 @@ describe("board commands", () => {
     setBoardOwnershipProvider(() => false);
     expect(useBoardStore.getState().createShape("rectangle", { x: 0, y: 0, width: 100, height: 80 })).toBeNull();
     expect(useBoardStore.getState().deleteConnectors(["anything"])).toBeUndefined();
-    expect(useBoardStore.getState().pasteElements([createShape("ellipse", { x: 0, y: 0, width: 10, height: 10 })])).toEqual([]);
+    expect(useBoardStore.getState().pasteElements({ elements: [createShape("ellipse", { x: 0, y: 0, width: 10, height: 10 })], connectors: [] })).toEqual([]);
     expect(useBoardStore.getState().board?.elementIds).toEqual([]);
   });
 

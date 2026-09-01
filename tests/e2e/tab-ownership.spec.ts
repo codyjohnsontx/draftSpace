@@ -1,4 +1,4 @@
-import { expect, test, type Page } from "@playwright/test";
+import { expect, test, type Locator, type Page } from "@playwright/test";
 
 const storedShapePositions = (page: Page) => page.evaluate(async () => new Promise<Array<{ x: number; y: number }>>((resolve, reject) => {
   const id = localStorage.getItem("draftspace:last-board");
@@ -291,4 +291,52 @@ test("a board reopened after its owning tab vanished is editable again", async (
   await expect(reopened.locator(".board-access-banner")).toHaveCount(0);
   await drawRectangle(reopened, 700, 200, 840, 300);
   expect(await storedShapePositions(reopened)).toEqual([{ x: 200, y: 200 }, { x: 700, y: 200 }]);
+});
+
+// Firefox on Linux CI mis-hit-tests DOM overlaid on the accelerated canvas layer, so it activates
+// the switcher's controls directly. Mirrors the workaround in board-switching.spec.ts.
+async function activate(browserName: string, target: Locator) {
+  await expect(target).toBeVisible();
+  if (browserName === "firefox") { await target.dispatchEvent("click"); return; }
+  await target.click();
+}
+
+const boardName = (page: Page) => page.getByRole("textbox", { name: "Board name" });
+
+async function switchToBoard(page: Page, browserName: string, name: string) {
+  await activate(browserName, page.getByRole("button", { name: "Open a board" }));
+  await activate(browserName, page.getByRole("menuitemradio", { name: new RegExp(name) }));
+}
+
+/** Leaves a second board behind the way a user gets one, then opens a fresh one beside it. */
+async function startASecondBoard(page: Page, name: string) {
+  await page.evaluate(() => localStorage.removeItem("draftspace:last-board"));
+  await page.reload();
+  await expect(page.getByRole("main", { name: "Draftspace infinite canvas" })).toBeVisible();
+  await boardName(page).fill(name); await boardName(page).press("Enter");
+}
+
+test("the claim follows a board switch rather than leaving two writers on one board", async ({ browserName, context }) => {
+  const owner = await openBoard(await context.newPage());
+  await boardName(owner).fill("First board"); await boardName(owner).press("Enter");
+  await drawRectangle(owner, 200, 200, 340, 300);
+  await startASecondBoard(owner, "Second board");
+  await drawRectangle(owner, 600, 200, 740, 300);
+
+  // The switcher is how a read-only tab reaches a board it can have, so it stays available to one.
+  const reader = await openBoard(await context.newPage());
+  await expect(reader.getByRole("main", { name: "Draftspace infinite canvas" })).toHaveAttribute("data-readonly", "true");
+  await switchToBoard(reader, browserName, "First board");
+  await expect(boardName(reader)).toHaveValue("First board");
+  await expect(reader.getByRole("main", { name: "Draftspace infinite canvas" })).not.toHaveAttribute("data-readonly");
+  await drawRectangle(reader, 300, 450, 440, 550);
+
+  // Switching onto a board another tab holds must open it read-only, not start a second autosave.
+  await switchToBoard(owner, browserName, "First board");
+  await expect(boardName(owner)).toHaveValue("First board");
+  await expect(owner.getByRole("main", { name: "Draftspace infinite canvas" })).toHaveAttribute("data-readonly", "true");
+  await expect(saveStatus(owner)).toHaveText("View only");
+  const before = await storedBoards(owner);
+  await drawRectangle(owner, 800, 450, 940, 550);
+  expect(await storedBoards(owner)).toEqual(before);
 });

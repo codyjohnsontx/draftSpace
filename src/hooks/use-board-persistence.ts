@@ -76,6 +76,9 @@ export function useBoardPersistence(): PersistenceController {
    * holds work nothing will ever write, so it answers the same as a write storage refused.
    */
   const settleOpenBoard = useCallback(async () => {
+    // A tab that does not hold the board never accepted an edit, so it has no work to settle and
+    // no coordinator to ask. Refusing its switch would strand it on a board it cannot edit.
+    if (usePersistenceStore.getState().boardAccess !== "owner") return true;
     const outgoing = coordinator.current;
     if (!outgoing || usePersistenceStore.getState().status === "session-only") return false;
     return outgoing.settle();
@@ -134,6 +137,9 @@ export function useBoardPersistence(): PersistenceController {
     // an edit accepted against the stale copy would be dropped by the reload that follows it.
     try {
       const result = loadBoardDocument(boardId, await repository.getRawById(boardId));
+      // The tab switched boards while this promotion was in flight. Its claim on that board was
+      // released and the open one has its own; adopting this document would overwrite the screen.
+      if (useBoardStore.getState().board?.id !== boardId) return;
       if (result.kind === "invalid") {
         persistence.setBoardAccess("owner");
         persistence.requireRecovery({ boardId: result.boardId, raw: result.raw, detectedAt: new Date().toISOString(), reason: "invalid", issues: result.issues }); return;
@@ -236,11 +242,11 @@ export function useBoardPersistence(): PersistenceController {
    * tab last agreed with it. The original belongs to whichever tab advanced it, and this tab's
    * copy is unsaved work, so neither one may be written over the other.
    *
-   * The copy becomes the last-opened board. There is no board switcher, so
-   * `draftspace:last-board` is the only route back to anything: a copy nothing points at is a
-   * copy the user can never open again, which would defeat saving it at all. The cost is that a
-   * later cold start opens the copy rather than the original, which is the cheaper loss, since
-   * the original is intact and the tab that owns it keeps saving to it.
+   * The copy becomes the last-opened board, so the work the user was just doing is what the
+   * next cold start puts on screen. Since the board switcher landed, that choice no longer
+   * strands anything: both boards are listed and either one opens, so the only thing at stake
+   * is which of the two comes up first. The original is intact and its owning tab keeps
+   * saving to it.
    */
   const saveAsRecoveredCopy = useCallback(async (board: BoardDocument) => {
     const timestamp = now();
@@ -253,7 +259,8 @@ export function useBoardPersistence(): PersistenceController {
     const activeCoordinator = await startCoordinator();
     const persistence = usePersistenceStore.getState();
     persistence.markSaved(savedRevision, new Date().toISOString());
-    persistence.setError(persistenceError("board-saved-as-copy", `Saved as "${copy.name}".`, false));
+    // A notice, not an error: the next autosave clears `error`, and a pan is enough to trigger one.
+    persistence.setNotice(persistenceError("board-saved-as-copy", `Saved as "${copy.name}".`, false));
     const latestRevision = useBoardStore.getState().revision;
     if (latestRevision > savedRevision) activeCoordinator.schedule(latestRevision);
   }, [claim, rememberStored, repository, startCoordinator]);
@@ -327,6 +334,9 @@ export function useBoardPersistence(): PersistenceController {
       if (!(await settleOpenBoard())) return "unsaved-work";
       persistence.markLoading();
       await drainCoordinator();
+      // The board on screen and the claim change together. Claiming releases the outgoing board's
+      // lock, so the tab that was reading this one is free to take it the moment this tab leaves.
+      const lease = await claim(result.board.id);
       useBoardStore.getState().setBoard(result.board);
       // Selection, history and any in-flight style preview belong to the board that was open, not
       // to this one. Previews are keyed by element id, and two boards can hold the same ids - a
@@ -337,6 +347,11 @@ export function useBoardPersistence(): PersistenceController {
       useSessionStore.getState().setConnectorStylePreview(null);
       useViewportStore.getState().setViewport(result.board.preferences.restoreViewport ? result.board.viewport : { x: 0, y: 0, zoom: 1 });
       localStorage.setItem(LAST_BOARD, result.board.id);
+      // Another tab already holds this board, so this one writes nothing at all, not even the
+      // migration, and starts no coordinator. The switcher is how a read-only tab reaches a board
+      // it can edit, so it must not become a way to open a second writer on the same one.
+      if (!lease.isOwner) { persistence.markSaved(0, new Date().toISOString()); return "opened"; }
+      rememberStored(result.board);
       if (result.migrated) await repository.update(result.board);
       const activeCoordinator = await startCoordinator();
       persistence.markSaved(0, new Date().toISOString());
@@ -358,7 +373,7 @@ export function useBoardPersistence(): PersistenceController {
       enterSessionOnly(normalizePersistenceError(error, "write"));
       return "opened";
     }
-  }, [drainCoordinator, enterSessionOnly, flushViewport, repository, settleOpenBoard, startCoordinator]);
+  }, [claim, drainCoordinator, enterSessionOnly, flushViewport, rememberStored, repository, settleOpenBoard, startCoordinator]);
 
   const downloadRecovery = useCallback(async () => {
     const recovery = usePersistenceStore.getState().recovery; if (!recovery) return;

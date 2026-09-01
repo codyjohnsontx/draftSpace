@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { BoardRecoveryScreen } from "@/components/recovery/board-recovery-screen";
 import { PersistenceStatus } from "@/components/app-shell/persistence-status";
 import { usePersistenceStore, type RecoveryPayload } from "@/stores/persistence-store";
@@ -9,7 +9,7 @@ import { persistenceError } from "@/features/persistence/persistence-errors";
 const controller = (): PersistenceController => ({ retrySave: vi.fn(), retryStorage: vi.fn(), startNewBoard: vi.fn(), openBoard: vi.fn().mockResolvedValue("opened"), downloadRecovery: vi.fn(), downloadCurrentBackup: vi.fn() });
 const recovery: RecoveryPayload = { boardId: "broken", raw: { bad: true }, detectedAt: new Date().toISOString(), reason: "invalid", issues: ["name: Required"] };
 
-beforeEach(() => usePersistenceStore.setState({ status: "saved", error: null, recovery: null, networkOnline: true, savedRevision: 0, attemptedRevision: null, lastSavedAt: null }));
+beforeEach(() => usePersistenceStore.setState({ status: "saved", boardAccess: "owner", error: null, notice: null, recovery: null, networkOnline: true, savedRevision: 0, attemptedRevision: null, lastSavedAt: null }));
 
 describe("persistence UI", () => {
   it("shows focused recovery actions and preserves the start-new intent", async () => {
@@ -44,11 +44,26 @@ describe("persistence UI", () => {
     expect(screen.getByRole("button", { name: "Retry storage" })).toBeVisible();
   });
   it("names the board a rescued draft was saved into", () => {
-    usePersistenceStore.setState({ status: "saved", error: persistenceError("board-saved-as-copy", 'Saved as "My first draft (recovered copy)".', false) });
+    usePersistenceStore.setState({ status: "saved", notice: persistenceError("board-saved-as-copy", 'Saved as "My first draft (recovered copy)".', false) });
     render(<PersistenceStatus controller={controller()} />);
     fireEvent.click(screen.getByRole("button", { name: "Saved as a copy" }));
     expect(screen.getByRole("dialog", { name: "Saved as a copy" })).toBeVisible();
     expect(screen.getByText('Saved as "My first draft (recovered copy)".')).toBeVisible();
+  });
+  it("keeps the copy notice through the saves that follow it", () => {
+    // The notice used to live in `error`, which markSaving and markSaved both clear, so the
+    // first autosave after the rescue took the explanation away. A pan is enough to cause one.
+    usePersistenceStore.setState({ status: "saved", notice: persistenceError("board-saved-as-copy", 'Saved as "My first draft (recovered copy)".', false) });
+    render(<PersistenceStatus controller={controller()} />);
+    act(() => { usePersistenceStore.getState().markSaving(4); });
+    act(() => { usePersistenceStore.getState().markSaved(4, new Date().toISOString()); });
+    expect(screen.getByRole("button", { name: "Saved as a copy" })).toBeVisible();
+  });
+  it("retires the copy notice once another board is opened", () => {
+    usePersistenceStore.setState({ status: "saved", notice: persistenceError("board-saved-as-copy", 'Saved as "My first draft (recovered copy)".', false) });
+    render(<PersistenceStatus controller={controller()} />);
+    act(() => { usePersistenceStore.getState().markLoading(); });
+    expect(screen.queryByRole("button", { name: "Saved as a copy" })).not.toBeInTheDocument();
   });
   it("renders saved state as non-actionable status", () => { render(<PersistenceStatus controller={controller()} />); expect(screen.queryByRole("button", { name: "Saved locally" })).not.toBeInTheDocument(); expect(screen.getByText("Saved locally")).toBeVisible(); });
   it("describes a successful local save while offline", () => { usePersistenceStore.setState({ status: "saved", networkOnline: false }); render(<PersistenceStatus controller={controller()} />); expect(screen.getByText("Saved offline")).toBeVisible(); });

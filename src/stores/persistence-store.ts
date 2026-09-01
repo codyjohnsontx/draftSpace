@@ -24,6 +24,12 @@ type PersistenceStore = {
   status: PersistenceStatus;
   boardAccess: BoardAccess;
   error: PersistenceError | null;
+  /**
+   * Something the user has to be told that is not a failure, so `status` has nothing to say
+   * about it and the saves that clear `error` must leave it alone. Only opening another board
+   * retires it: until then the tab is still showing the board the notice is about.
+   */
+  notice: PersistenceError | null;
   recovery: RecoveryPayload | null;
   /**
    * Every readable board in this browser, newest first. Persistence state rather than board
@@ -40,6 +46,7 @@ type PersistenceStore = {
   markSaved: (revision: number, savedAt: string) => void;
   markFailed: (error: PersistenceError) => void;
   setError: (error: PersistenceError) => void;
+  setNotice: (notice: PersistenceError) => void;
   enterSessionOnly: (error: PersistenceError) => void;
   requireRecovery: (payload: RecoveryPayload) => void;
   clearRecovery: () => void;
@@ -48,14 +55,15 @@ type PersistenceStore = {
 };
 
 export const usePersistenceStore = create<PersistenceStore>((set) => ({
-  status: "loading", boardAccess: "owner", error: null, recovery: null, boards: [], lastSavedAt: null, savedRevision: 0, attemptedRevision: null,
+  status: "loading", boardAccess: "owner", error: null, notice: null, recovery: null, boards: [], lastSavedAt: null, savedRevision: 0, attemptedRevision: null,
   networkOnline: typeof navigator === "undefined" ? true : navigator.onLine,
   setBoardAccess: (boardAccess) => set({ boardAccess }),
-  markLoading: () => set({ status: "loading", error: null, recovery: null }),
+  markLoading: () => set({ status: "loading", error: null, notice: null, recovery: null }),
   markSaving: (attemptedRevision) => set({ status: "saving", attemptedRevision, error: null }),
   markSaved: (savedRevision, lastSavedAt) => set({ status: "saved", savedRevision, lastSavedAt, attemptedRevision: null, error: null }),
   markFailed: (error) => set({ status: "failed", error, attemptedRevision: null }),
   setError: (error) => set({ error }),
+  setNotice: (notice) => set({ notice }),
   enterSessionOnly: (error) => set({ status: "session-only", error, attemptedRevision: null }),
   requireRecovery: (recovery) => set({ status: "recovery-required", recovery, error: null, attemptedRevision: null }),
   clearRecovery: () => set({ recovery: null, error: null }),

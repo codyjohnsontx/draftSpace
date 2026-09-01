@@ -9,11 +9,12 @@ export function PersistenceStatus({ controller }: { controller: PersistenceContr
   const status = usePersistenceStore((state) => state.status);
   const readOnly = usePersistenceStore((state) => state.boardAccess === "read-only");
   const error = usePersistenceStore((state) => state.error);
+  const notice = usePersistenceStore((state) => state.notice);
   const online = usePersistenceStore((state) => state.networkOnline);
   const [open, setOpen] = useState(false); const buttonRef = useRef<HTMLButtonElement>(null);
   // The work is saved, but not to the board the user was looking at, so saying only "Saved
   // locally" would hide a board they do not know exists yet.
-  const savedAsCopy = status === "saved" && error?.code === "board-saved-as-copy";
+  const savedAsCopy = notice?.code === "board-saved-as-copy" && status !== "failed" && status !== "session-only";
   // A read-only tab saves nothing, so its save state is not the thing to report.
   const actionable = readOnly || savedAsCopy || status === "failed" || status === "session-only";
   const label = readOnly ? "View only" : savedAsCopy ? "Saved as a copy" : status === "loading" ? "Opening…" : status === "saving" ? "Saving…" : status === "failed" ? "Save failed" : status === "session-only" ? "Not saving" : online ? "Saved locally" : "Saved offline";
@@ -37,7 +38,7 @@ export function PersistenceStatus({ controller }: { controller: PersistenceContr
       <strong>Your work is now its own board</strong>
       <p>Another tab took over the original board while this one could not save, so saving here would have destroyed that tab&apos;s work. This tab kept your changes and put them in a new board instead.</p>
       <p>That new board is what this browser opens next time. The original is untouched.</p>
-      {error?.message && <small>{error.message}</small>}
+      {notice?.message && <small>{notice.message}</small>}
       <div className="persistence-actions">
         <button className="compact-secondary" onClick={() => void controller.downloadCurrentBackup()}><HardDriveDownload size={14} />Download backup</button>
       </div>
