@@ -3,7 +3,7 @@ import type { BoardDocument } from "@/core/board/types";
 import type { Bounds, ConnectorEndpoint, ConnectorKind, ConnectorMutablePatch, ShapeStylePatch, ShapeType } from "@/core/elements/types";
 import { connectorsTouching } from "@/core/connectors/routing";
 import type { Viewport } from "@/core/board/types";
-import { createBoard, createConnector, createShape, now } from "@/core/board/factory";
+import { createBoard, createConnector, createShape, newId, now } from "@/core/board/factory";
 import { connectorsWithin, copySelection, type SelectionCopy } from "@/core/board/duplicate";
 import { emptyHistory, transact, type HistoryEntry, type HistoryState } from "@/features/history/history";
 import { applyBoardCommand } from "@/core/commands/apply-board-command";
@@ -128,7 +128,7 @@ export const useBoardStore = create<BoardStore>((set, get) => ({
     const { board, history, revision } = get();
     if (!board || (origin === "local" && !canDispatchLocalCommands())) return null;
     const inverse = createInverseCommand(board, command);
-    const { next, entry } = transact(board, metadata.label, (draft) => { if (applyBoardCommand(draft, command)) draft.updatedAt = now(); }, command, metadata);
+    const { next, entry } = transact(board, metadata.label, (draft) => { if (applyBoardCommand(draft, command)) { draft.updatedAt = now(); draft.stateId = newId(); } }, command, metadata);
     if (!entry) return null;
     entry.inverseCommand = inverse;
     entry.redoCommand = createRedoCommand(command, inverse);
@@ -174,7 +174,7 @@ export const useBoardStore = create<BoardStore>((set, get) => ({
     const { board, revision } = get();
     if (!board || !board.preferences.restoreViewport) return;
     if (board.viewport.x === viewport.x && board.viewport.y === viewport.y && board.viewport.zoom === viewport.zoom) return;
-    set({ board: { ...board, viewport, updatedAt: now() }, revision: revision + 1 });
+    set({ board: { ...board, viewport, updatedAt: now(), stateId: newId() }, revision: revision + 1 });
   },
   undo: (actorId = getLocalActorId()) => {
     const { history } = get(); if (!canDispatchLocalCommands()) return;

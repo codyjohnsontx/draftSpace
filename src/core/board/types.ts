@@ -9,6 +9,12 @@ export type BoardDocument = {
   name: string;
   createdAt: string;
   updatedAt: string;
+  /**
+   * Identity of this exact document state, replaced by every mutation. `updatedAt` cannot serve:
+   * it is a millisecond timestamp, so two mutations inside one tick share it, and a tab comparing
+   * against it reads a draft it has not saved as one storage holds. See `stored-board-stamp.ts`.
+   */
+  stateId: string;
   viewport: Viewport;
   preferences: {
     backgroundPattern: "dots" | "grid" | "none";

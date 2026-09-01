@@ -1,4 +1,5 @@
 import "fake-indexeddb/auto";
+
 import { createElement } from "react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { act, fireEvent, render, renderHook, screen, waitFor } from "@testing-library/react";
@@ -15,6 +16,16 @@ import { usePersistenceStore } from "@/stores/persistence-store";
 import { useSessionStore } from "@/stores/session-store";
 
 const LAST_BOARD = "draftspace:last-board";
+
+/**
+ * Freezes the clock every document mutation stamps itself with, so two mutations land in one tick.
+ * Storage and timers are untouched, which leaves exactly one variable under test.
+ */
+let frozenNow: string | null = null;
+vi.mock("@/core/board/factory", async (importActual) => {
+  const actual = await importActual<typeof import("@/core/board/factory")>();
+  return { ...actual, now: () => frozenNow ?? actual.now() };
+});
 
 /** Two stored boards, `first` opened, exactly as a browser that has ended up with more than one. */
 async function seedTwoBoards() {
@@ -71,6 +82,7 @@ async function damage(boardId: string) {
 }
 
 beforeEach(async () => {
+  frozenNow = null;
   await deleteDB("draftspace");
   localStorage.clear();
   useBoardStore.setState({ board: null, history: emptyHistory(), revision: 0 });
@@ -274,7 +286,7 @@ describe("opening a second board", () => {
 
     // Another tab advanced the stored record, which is what sends the retry to a copy rather than
     // letting it write over work this tab never saw.
-    await repository.update({ ...original, name: "Advanced elsewhere", updatedAt: new Date(Date.now() + 5000).toISOString() });
+    await repository.update({ ...original, name: "Advanced elsewhere", stateId: crypto.randomUUID(), updatedAt: new Date(Date.now() + 5000).toISOString() });
 
     // Work this tab is holding that storage has not taken, which is what the copy exists to keep.
     const failing = vi.spyOn(IndexedDbBoardRepository.prototype, "update").mockRejectedValue(new Error("QuotaExceededError"));
@@ -314,7 +326,7 @@ describe("opening a second board", () => {
 
     // Another tab advanced the stored record, which is what sends the retry to a copy rather than
     // letting it write over work this tab never saw.
-    await repository.update({ ...first, name: "Advanced elsewhere", updatedAt: new Date(Date.now() + 5000).toISOString() });
+    await repository.update({ ...first, name: "Advanced elsewhere", stateId: crypto.randomUUID(), updatedAt: new Date(Date.now() + 5000).toISOString() });
 
     // Work only this tab is holding, and no autosave that can take it.
     const update = vi.spyOn(IndexedDbBoardRepository.prototype, "update").mockRejectedValue(new Error("QuotaExceededError"));
@@ -354,7 +366,7 @@ describe("opening a second board", () => {
     localStorage.setItem(LAST_BOARD, original.id);
     const session = await openDraftspace();
 
-    await repository.update({ ...original, name: "Advanced elsewhere", updatedAt: new Date(Date.now() + 5000).toISOString() });
+    await repository.update({ ...original, name: "Advanced elsewhere", stateId: crypto.randomUUID(), updatedAt: new Date(Date.now() + 5000).toISOString() });
     const failing = vi.spyOn(IndexedDbBoardRepository.prototype, "update").mockRejectedValue(new Error("QuotaExceededError"));
     await act(async () => { useBoardStore.getState().createShape("rectangle", { x: 10, y: 10, width: 80, height: 60 }); });
     failing.mockRestore();
@@ -565,6 +577,72 @@ describe("opening a second board", () => {
     expect(useBoardStore.getState().board?.id).toBe(second.id);
     expect(useBoardStore.getState().board?.name).toBe("Recovered copy");
     expect(await new IndexedDbBoardRepository().list()).toHaveLength(2);
+    session.unmount();
+  });
+
+  /**
+   * `updatedAt` used to be the stamp's currency, and `now()` has millisecond resolution, so two
+   * mutations inside one clock tick share it. A tab that had written the first and was holding the
+   * second read its own unsaved work as a draft storage already had, and the switch discarded it -
+   * silently, which is the whole class this line of work exists to remove. Constructed rather than
+   * argued: with the clock pinned this reproduced against `updatedAt` every time.
+   *
+   * `stateId` is replaced by every mutation, so the two states differ whatever the clock says.
+   */
+  it("refuses the switch when the unsaved mutation shares a clock tick with the stored one", async () => {
+    frozenNow = "2026-01-01T00:00:00.000Z";
+    const { first, second } = await seedTwoBoards();
+    const session = await openDraftspace();
+    await waitFor(() => expect(usePersistenceStore.getState().boards).toHaveLength(2));
+
+    // Mutation A, written by autosave, so the stamp records it.
+    await draw(10);
+    await waitFor(async () => expect((await storedBoard(first.id)).elementIds).toHaveLength(1), { timeout: 3000 });
+    const stored = await storedBoard(first.id);
+
+    await intoTheFailedHandover(session, second.id);
+
+    // Mutation B, same clock tick as A, and nothing left to write it.
+    await draw(200);
+    const board = useBoardStore.getState().board!;
+    // The collision itself, which is the precondition the old currency could not survive.
+    expect(board.updatedAt).toBe(stored.updatedAt);
+
+    // The behaviour first, so reverting the currency fails this on the switch rather than on a
+    // field that would not exist there.
+    let outcome: OpenBoardOutcome = "opened";
+    await act(async () => { outcome = await session.result.current.openBoard(second.id); });
+    expect(outcome).toBe("not-saving");
+    expect(useBoardStore.getState().board?.id).toBe(first.id);
+    expect(useBoardStore.getState().board?.elementIds).toHaveLength(2);
+    // And the mechanism that made it possible: the two states differ whatever the clock said.
+    expect(board.stateId).not.toBe(stored.stateId);
+    session.unmount();
+  });
+
+  /** The same collision on the other side: a record another tab advanced inside one tick. */
+  it("still sees a record another tab advanced inside one clock tick", async () => {
+    frozenNow = "2026-01-01T00:00:00.000Z";
+    const repository = new IndexedDbBoardRepository();
+    const original = createBoard("Original board");
+    await repository.create(original);
+    localStorage.setItem(LAST_BOARD, original.id);
+    const session = await openDraftspace();
+
+    // Another tab writes, in the same tick this tab last agreed with, so `updatedAt` is unchanged.
+    const advanced = { ...original, name: "Advanced elsewhere", stateId: crypto.randomUUID() };
+    await repository.update(advanced);
+    expect(advanced.updatedAt).toBe(original.updatedAt);
+
+    const failing = vi.spyOn(IndexedDbBoardRepository.prototype, "update").mockRejectedValue(new Error("QuotaExceededError"));
+    await draw(10);
+    failing.mockRestore();
+    await act(async () => { await session.result.current.retryStorage(); });
+
+    // The other tab's work is untouched and this tab's draft became a copy beside it.
+    expect(useBoardStore.getState().board?.id).not.toBe(original.id);
+    expect(useBoardStore.getState().board?.name).toBe("Original board (recovered copy)");
+    expect((await storedBoard(original.id)).name).toBe("Advanced elsewhere");
     session.unmount();
   });
 });

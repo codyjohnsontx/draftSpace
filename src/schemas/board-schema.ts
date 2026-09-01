@@ -68,6 +68,10 @@ const boardFields = {
   name: z.string().trim().min(1).max(120),
   createdAt: z.iso.datetime(),
   updatedAt: z.iso.datetime(),
+  // Stored documents written before this field parse to the sentinel, and the first mutation
+  // replaces it. Every document that has one differs from it, so a record another tab advanced is
+  // still detected; comparisons are scoped to one board id, so two legacy records cannot be confused.
+  stateId: z.string().min(1).default("pre-state-id"),
   viewport: z.object({ x: finite, y: finite, zoom: z.number().min(0.1).max(8) }),
   preferences: z.object({
     backgroundPattern: z.enum(["dots", "grid", "none"]),

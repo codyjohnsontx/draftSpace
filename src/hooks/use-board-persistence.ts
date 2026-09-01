@@ -11,7 +11,7 @@ import { loadBoardDocument } from "@/features/persistence/load-board-document";
 import { downloadBackup, serializeBoardBackup, serializeRecoveryBackup, type BackupResult } from "@/features/persistence/backup";
 import { normalizePersistenceError, persistenceError } from "@/features/persistence/persistence-errors";
 import { boardClaimIsCurrent, claimBoard, releaseBoardClaim, type BoardLease } from "@/features/persistence/board-lease";
-import { draftIsStored, storedRecordMovedOn, type StoredBoardStamp } from "@/features/persistence/stored-board-stamp";
+import { boardStamp, draftIsStored, storedRecordMovedOn, type StoredBoardStamp } from "@/features/persistence/stored-board-stamp";
 import { newId, now } from "@/core/board/factory";
 import type { BoardDocument } from "@/core/board/types";
 import { setBoardOwnershipProvider } from "@/core/commands/board-command";
@@ -68,7 +68,7 @@ export function useBoardPersistence(): PersistenceController {
 
   /** Records the stored record this tab now agrees with, after reading or writing it. */
   const rememberStored = useCallback((board: BoardDocument) => {
-    storedStamp.current = { boardId: board.id, updatedAt: board.updatedAt };
+    storedStamp.current = boardStamp(board);
   }, []);
 
   const handleAutosaveEvent = useCallback((event: AutosaveEvent) => {
@@ -308,7 +308,7 @@ export function useBoardPersistence(): PersistenceController {
    */
   const saveAsRecoveredCopy = useCallback(async (board: BoardDocument) => {
     const timestamp = now();
-    const copy: BoardDocument = { ...board, id: newId(), name: `${board.name} (recovered copy)`, createdAt: timestamp, updatedAt: timestamp };
+    const copy: BoardDocument = { ...board, id: newId(), stateId: newId(), name: `${board.name} (recovered copy)`, createdAt: timestamp, updatedAt: timestamp };
     // Access is `pending` for the length of this claim, so nothing can be drawn across it.
     await claim(copy.id);
     // The copy goes on screen before it is written, not after. The claim makes this tab editable

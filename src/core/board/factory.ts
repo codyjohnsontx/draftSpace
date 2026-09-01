@@ -24,6 +24,7 @@ export function createBoard(name = "Untitled board"): BoardDocument {
     name,
     createdAt: timestamp,
     updatedAt: timestamp,
+    stateId: newId(),
     viewport: { x: 0, y: 0, zoom: 1 },
     preferences: { backgroundPattern: "dots", gridSize: 20, snapToGrid: false, restoreViewport: true },
     elementIds: [],

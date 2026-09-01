@@ -26,7 +26,7 @@ Four rules bind new code:
 - Edit rights are never wider than the claim actually held, mid-transition included. Work resuming after an `await` proves it still holds its lease with `boardClaimIsCurrent`, never with the board id.
 - Any control that mutates the document gates on `useCanEditBoard()` / `canEditBoard()` (`src/hooks/use-can-edit-board.ts`) rather than reading the collaboration store; `dispatchCommand` is the backstop, not the gate.
 - Any write path runs only when the tab owns the board, and anything that changes which board is open hands the claim over with it.
-- Holding the claim makes a write exclusive, not current, so `storedStamp` is the second precondition. It answers two questions - has the stored record moved on, and is a tab with no coordinator left holding work nothing will write - so every writer refreshes it and every path that puts a stored board on screen records it (`src/features/persistence/stored-board-stamp.ts`).
+- Holding the claim makes a write exclusive, not current, so `storedStamp` is the second precondition. It answers two questions - has the stored record moved on, and is a tab with no coordinator left holding work nothing will write - so every writer refreshes it and every path that puts a stored board on screen records it (`src/features/persistence/stored-board-stamp.ts`). Its currency is the document's `stateId`, replaced by every mutation, never `updatedAt`: a millisecond timestamp collides across two mutations in one tick, and the switch then discards unsaved work silently.
 
 Design and the alternatives rejected: "One tab owns a board" in `docs/architecture.md`. What these rules actually produce is pinned by `tests/e2e/tab-ownership.spec.ts` and `tests/integration/board-switching.test.ts`.
 
