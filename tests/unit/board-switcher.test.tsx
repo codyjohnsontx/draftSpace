@@ -105,6 +105,18 @@ describe("board switcher", () => {
     expect(screen.getByRole("menuitemradio", { name: /Payments architecture/ })).toHaveAttribute("aria-checked", "true");
   });
 
+  it("names the way back when the open board is not being saved at all", async () => {
+    // Nothing tried and failed here, so "could not save" would describe an attempt this tab never
+    // made. The row has to name the control that gets storage back before the switch can go.
+    const actions = controller("not-saving"); render(<BoardSwitcher controller={actions} />);
+    fireEvent.click(screen.getByRole("button", { name: "Open a board" }));
+    fireEvent.click(screen.getByRole("menuitemradio", { name: /Recovered copy/ }));
+    await waitFor(() => expect(screen.getByRole("menuitemradio", { name: /Recovered copy/ })).toHaveTextContent("not saving the open board"));
+    expect(screen.getByRole("menuitemradio", { name: /Recovered copy/ })).toHaveTextContent("Retry storage first");
+    expect(screen.getByRole("menu", { name: "Boards in this browser" })).toBeVisible();
+    expect(screen.getByRole("status")).toHaveTextContent("Retry storage first");
+  });
+
   it("says both halves when the open board was let go and the picked one could not be claimed", async () => {
     // The user is left looking at the board they had, so the click looks ignored, and that board
     // quietly stopped being saved on the way. Neither half is visible from the board on screen.

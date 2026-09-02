@@ -23,6 +23,13 @@ export type AutosaveCoordinatorOptions = {
   debounceMs?: number;
   retryDelaysMs?: number[];
   onStateChange: (event: AutosaveEvent) => void;
+  /**
+   * Runs with the document storage has just accepted, so a caller keeping its own record of what
+   * storage holds is told about the writes this coordinator makes as well as its own. It cannot
+   * ride on the `saved` event: that one is suppressed when the board moved on during the write,
+   * and the record written is in storage either way.
+   */
+  onStored?: (board: BoardDocument) => void;
 };
 
 export class AutosaveCoordinator {
@@ -72,6 +79,7 @@ export class AutosaveCoordinator {
       this.retryIndex = 0;
       this.lastWriteError = null;
       this.savedRevision = Math.max(this.savedRevision, revision);
+      this.options.onStored?.(snapshot);
       if (this.options.getRevision() === revision) this.options.onStateChange({ type: "saved", revision, savedAt: new Date().toISOString() });
     }).catch((cause) => {
       const error = normalizePersistenceError(cause, "write");

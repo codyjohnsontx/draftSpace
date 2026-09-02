@@ -31,7 +31,7 @@ describe("stored board loading", () => {
     const migratedElement = { ...raw.elements["legacy-rectangle"], nodeKind: "plain", layer: 0, label: "" };
     expect(loadBoardDocument(raw.id, raw)).toEqual({
       kind: "ready",
-      board: { ...raw, schemaVersion: 3, elements: { "legacy-rectangle": migratedElement }, connectorIds: [], connectors: {} },
+      board: { ...raw, schemaVersion: 3, stateId: "pre-state-id", elements: { "legacy-rectangle": migratedElement }, connectorIds: [], connectors: {} },
       migrated: true,
     });
     expect(raw).toEqual(before);

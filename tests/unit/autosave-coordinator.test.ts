@@ -1,15 +1,16 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { createBoard } from "@/core/board/factory";
 import { AutosaveCoordinator, type AutosaveEvent } from "@/features/persistence/autosave-coordinator";
+import type { BoardDocument } from "@/core/board/types";
 import type { BoardRepository } from "@/repositories/board-repository";
 
 afterEach(() => vi.useRealTimers());
 
 function setup(update = vi.fn(async () => {}), retryDelaysMs = [1000, 2000, 4000]) {
-  let revision = 1; const events: AutosaveEvent[] = []; const board = createBoard();
+  let revision = 1; const events: AutosaveEvent[] = []; const stored: BoardDocument[] = []; const board = createBoard();
   const repository = { update } as unknown as BoardRepository;
-  const coordinator = new AutosaveCoordinator({ repository, getBoard: () => board, getRevision: () => revision, debounceMs: 500, retryDelaysMs, onStateChange: (event) => events.push(event) });
-  return { coordinator, update, events, setRevision: (value: number) => { revision = value; } };
+  const coordinator = new AutosaveCoordinator({ repository, getBoard: () => board, getRevision: () => revision, debounceMs: 500, retryDelaysMs, onStateChange: (event) => events.push(event), onStored: (written) => stored.push(written) });
+  return { coordinator, update, events, stored, setRevision: (value: number) => { revision = value; } };
 }
 
 describe("autosave coordinator", () => {
@@ -64,6 +65,29 @@ describe("autosave coordinator", () => {
     await vi.advanceTimersByTimeAsync(1999); expect(update).toHaveBeenCalledTimes(2);
     await vi.advanceTimersByTimeAsync(1); expect(update).toHaveBeenCalledTimes(3);
   });
+  /**
+   * A caller keeping its own record of what storage holds cannot read that off the `saved` event:
+   * the event is suppressed when the board moves on mid-write, and the record written is stored
+   * either way. Leaving autosave out of that record is what let a retry read its own last write
+   * as another tab's work.
+   */
+  it("reports the document storage accepted even when the board moved on mid-write", async () => {
+    vi.useFakeTimers(); let resolve!: () => void;
+    const update = vi.fn().mockImplementationOnce(() => new Promise<void>((done) => { resolve = done; })).mockResolvedValue(undefined);
+    const test = setup(update);
+    test.coordinator.schedule(1); await vi.advanceTimersByTimeAsync(500);
+    test.setRevision(2); resolve(); await vi.advanceTimersByTimeAsync(0);
+    expect(test.events.some((event) => event.type === "saved" && event.revision === 1)).toBe(false);
+    expect(test.stored).toHaveLength(1);
+  });
+
+  it("says nothing was stored when the write was refused", async () => {
+    vi.useFakeTimers(); const update = vi.fn(async () => { throw new Error("nope"); }); const test = setup(update, []);
+    test.coordinator.schedule(1); await vi.advanceTimersByTimeAsync(500);
+    expect(test.events.at(-1)?.type).toBe("failed");
+    expect(test.stored).toHaveLength(0);
+  });
+
   it("disposal clears scheduled work", async () => {
     vi.useFakeTimers(); const test = setup(); test.coordinator.schedule(1); test.coordinator.dispose(); await vi.advanceTimersByTimeAsync(1000); expect(test.update).not.toHaveBeenCalled();
   });
