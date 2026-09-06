@@ -175,6 +175,11 @@ describe("the inspector with edges held", () => {
     useSessionStore.getState().setSelectedConnectors(connectorIds);
     return render(<StyleInspector />);
   };
+  /**
+   * The floating bar has room for six of the ten colours, so the eyedropper sits behind the
+   * palette button beside them - a test that wants it opens the disclosure as a person would.
+   */
+  const openStrokePalette = () => fireEvent.click(screen.getByLabelText("More stroke colors"));
 
   it("offers an edge its own controls and none of the ones it has no use for", () => {
     const { firstId } = wiredBoard();
@@ -253,6 +258,7 @@ describe("the inspector with edges held", () => {
   it("shows the color being tried out without writing it to the board until it is committed", () => {
     const { firstId, edge } = wiredBoard();
     showInspector([firstId]);
+    openStrokePalette();
     const picker = screen.getByLabelText("Custom stroke color");
     fireEvent.input(picker, { target: { value: "#3f7f78" } });
     expect(useSessionStore.getState().connectorStylePreview).toEqual({ connectorIds: [firstId], patch: { strokeColor: "#3f7f78" } });
@@ -266,6 +272,7 @@ describe("the inspector with edges held", () => {
   it("stops previewing when the selection stops holding the edges", () => {
     const { firstId } = wiredBoard();
     const view = showInspector([firstId]);
+    openStrokePalette();
     fireEvent.input(screen.getByLabelText("Custom stroke color"), { target: { value: "#d4a72c" } });
     expect(useSessionStore.getState().connectorStylePreview).not.toBeNull();
     useSessionStore.getState().setSelectedConnectors([]);

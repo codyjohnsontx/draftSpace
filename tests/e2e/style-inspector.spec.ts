@@ -12,6 +12,15 @@ async function pressButton(page: Page, browserName: string, name: string) {
   await button.click();
 }
 
+/**
+ * Reveals a colour the floating bar has no room to show. Six of the ten are on the bar; the rest,
+ * the recent colours and the eyedropper sit behind the palette button beside them, so a test that
+ * wants one of those has to open it exactly as a person would.
+ */
+async function openPalette(page: Page, browserName: string, control: "fill" | "stroke") {
+  await pressButton(page, browserName, `More ${control} colors`);
+}
+
 async function setRange(page: Page, name: string, value: number) {
   const slider = page.getByRole("slider", { name });
   await slider.evaluate((element, nextValue) => {
@@ -59,7 +68,9 @@ test("styles a selected shape with one-entry continuous edits", async ({ browser
 
   const inspector = page.getByRole("toolbar", { name: "Style inspector" });
   await expect(inspector).toBeVisible();
+  await openPalette(page, browserName, "fill");
   await pressButton(page, browserName, "Set fill to Blue");
+  await openPalette(page, browserName, "stroke");
   await pressButton(page, browserName, "Set stroke to Plum");
   await pressButton(page, browserName, "Set stroke width to 4");
   await pressButton(page, browserName, "Set stroke style to dotted");
@@ -142,6 +153,37 @@ test("switches and persists inspector layouts", async ({ browserName, page }, te
   expect(await page.evaluate(() => JSON.parse(localStorage.getItem("draftspace:inspector-preferences")!).mode)).toBe("sidebar");
 });
 
+test("fits every floating control inside the bar at a laptop width", async ({ browserName, page }) => {
+  test.skip(browserName !== "chromium", "One engine is enough for a width budget.");
+  await page.setViewportSize({ width: 1440, height: 900 });
+  await page.goto("/");
+  await expect(page.getByRole("main", { name: "Draftspace infinite canvas" })).toBeVisible();
+
+  // A rectangle is the widest the bar ever gets: it is the only shape that adds a Corners group.
+  await page.keyboard.press("r");
+  await page.mouse.move(250, 180); await page.mouse.down(); await page.mouse.move(450, 300); await page.mouse.up();
+  const bar = page.getByRole("toolbar", { name: "Style inspector" });
+  await expect(bar).toBeVisible();
+
+  // Going over budget used to hide the controls at the right-hand end with no scrollbar, fade or
+  // chevron to say so - 159px of them at this size - so the only way to catch it is to measure.
+  const controls = bar.locator(".inspector-controls");
+  expect(await controls.evaluate((element) => element.scrollWidth - element.clientWidth)).toBe(0);
+  const box = (await bar.boundingBox())!;
+  expect(box.x).toBeGreaterThanOrEqual(0);
+  expect(box.x + box.width).toBeLessThanOrEqual(1440);
+
+  // Six of the ten colours are on the bar and the other four are behind the palette button, so
+  // the whole palette is still reachable - this is a disclosure, not a smaller set of colours.
+  await expect(bar.locator(".color-group").first().locator(".color-swatch")).toHaveCount(7); // "none" + six
+  await page.getByRole("button", { name: "More fill colors" }).click();
+  const disclosed = page.getByRole("group", { name: "More fill colors" });
+  await expect(disclosed.getByRole("button")).toHaveCount(4);
+  for (const name of ["Sage", "Teal", "Blue", "Plum"]) {
+    await expect(disclosed.getByRole("button", { name: `Set fill to ${name}` })).toBeVisible();
+  }
+});
+
 test("handles mixed selections, rectangle-only corners, and recent custom colors", async ({ browserName, page }) => {
   test.skip(browserName !== "chromium", "Detailed mixed-selection coverage runs in Chromium.");
   await page.goto("/");
@@ -151,6 +193,7 @@ test("handles mixed selections, rectangle-only corners, and recent custom colors
   await page.keyboard.press("e");
   await page.mouse.move(430, 180); await page.mouse.down(); await page.mouse.move(590, 280); await page.mouse.up();
 
+  await openPalette(page, browserName, "fill");
   const customFill = page.getByLabel("Custom fill color");
   await customFill.focus();
   await customFill.evaluate((element) => {
@@ -209,6 +252,7 @@ test("styles and names a selected connector", async ({ browserName, page }, test
   await expect(page.getByRole("button", { name: "Set fill to Blue" })).toHaveCount(0);
   await expect(page.getByRole("slider", { name: "Opacity" })).toHaveCount(0);
 
+  await openPalette(page, browserName, "stroke");
   await pressButton(page, browserName, "Set stroke to Teal");
   await pressButton(page, browserName, "Set connector width to 4");
   await pressButton(page, browserName, "Set connector kind to async");

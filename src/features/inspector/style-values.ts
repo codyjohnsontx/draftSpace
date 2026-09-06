@@ -26,6 +26,38 @@ export function normalizeHexColor(value: string): string | null {
   return HEX_COLOR.test(normalized) ? normalized : null;
 }
 
+export type PaletteSwatch = { name: string; value: string };
+
+/** How many colours a compact control shows before the rest are a press away. */
+export const QUICK_COLOR_COUNT = 6;
+
+const swatchName = (color: string) =>
+  CURATED_COLORS.find(({ value }) => value.toLowerCase() === color.toLowerCase())?.name ?? `recent color ${color.toLowerCase()}`;
+
+/**
+ * The colours a compact control puts on show: the palette's first six, except that a colour
+ * the selection already carries always takes the last slot. Without that swap, a shape styled
+ * from the far end of the palette would show no pressed chip at all and the control could not
+ * say what it was set to.
+ */
+export function quickColors(current: string | null | undefined, limit = QUICK_COLOR_COUNT): PaletteSwatch[] {
+  const quick: PaletteSwatch[] = CURATED_COLORS.slice(0, limit).map(({ name, value }) => ({ name, value }));
+  if (!current || quick.some(({ value }) => value.toLowerCase() === current.toLowerCase())) return quick;
+  return [...quick.slice(0, limit - 1), { name: swatchName(current), value: current }];
+}
+
+/**
+ * Everything the compact control did not have room for, so the two together are always the whole
+ * palette plus every recent colour - this is a disclosure, never a smaller set of colours.
+ */
+export function overflowColors(quick: readonly PaletteSwatch[], recentColors: readonly string[]): PaletteSwatch[] {
+  const shown = new Set(quick.map(({ value }) => value.toLowerCase()));
+  const rest: PaletteSwatch[] = [];
+  for (const { name, value } of CURATED_COLORS) if (!shown.has(value.toLowerCase())) rest.push({ name, value });
+  for (const color of recentColors) if (!shown.has(color.toLowerCase())) rest.push({ name: swatchName(color), value: color });
+  return rest;
+}
+
 export function updateRecentColors(colors: readonly string[], nextColor: string, limit = 6): string[] {
   const normalized = normalizeHexColor(nextColor);
   if (!normalized) return [...colors];
