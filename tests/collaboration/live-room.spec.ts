@@ -79,7 +79,12 @@ test("a tab another tab is editing is not offered a live room", async ({ context
 
   const share = reader.getByRole("button", { name: "Share board" });
   await expect(share).toBeDisabled();
-  await expect(share).toHaveAccessibleDescription("Another tab is editing this board, so it cannot be shared from here");
+  await expect(share).toHaveAccessibleDescription("Only the tab editing this board can share it");
+
+  // The copy has to fit the shared tooltip box. `.app-tooltip` caps its width, so a description
+  // longer than its neighbours used to spill straight out of the panel rather than wrap.
+  const spill = await share.locator("xpath=..").locator(".app-tooltip").evaluate((tip) => tip.scrollWidth - tip.clientWidth);
+  expect(spill).toBeLessThanOrEqual(1);
 
   // Closing the owning tab hands this one the board, and with it the room it was refused.
   await owner.close();

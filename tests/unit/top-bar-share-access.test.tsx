@@ -35,7 +35,7 @@ describe("who is offered the share control", () => {
     const share = screen.getByRole("button", { name: "Share board" });
     expect(share).toBeDisabled();
     // The same explanation the board name and the view-only banner give, on the control itself.
-    expect(share).toHaveAccessibleDescription("Another tab is editing this board, so it cannot be shared from here");
+    expect(share).toHaveAccessibleDescription("Only the tab editing this board can share it");
     expect(screen.getByRole("textbox", { name: "Board name" })).toBeDisabled();
   });
 

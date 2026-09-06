@@ -211,7 +211,7 @@ button { color: inherit; }
   width: max-content; max-width: 260px; padding: 10px 11px 10px 12px; color: #fffdfa; background: #292724;
   border: 1px solid rgba(255,255,255,.1); border-radius: 9px; box-shadow: 0 8px 24px rgba(38,33,28,.2);
   opacity: 0; visibility: hidden; pointer-events: none; transform: translate(-50%, 5px) scale(.98); transform-origin: 50% 100%;
-  transition: none; white-space: nowrap;
+  transition: none;
 }
 .app-tooltip::after { content: ""; position: absolute; left: 50%; top: 100%; width: 8px; height: 8px; background: #292724; border-right: 1px solid rgba(255,255,255,.1); border-bottom: 1px solid rgba(255,255,255,.1); transform: translate(-50%, -4px) rotate(45deg); }
 .tooltip-anchor:hover .app-tooltip, .tooltip-anchor:focus-within .app-tooltip { opacity: 1; visibility: visible; transform: translate(-50%, 0) scale(1); transition: none; }
