@@ -206,6 +206,8 @@ button { color: inherit; }
 .tool.active { color: #7e361f; background: var(--accent-soft); box-shadow: inset 0 0 0 1px rgba(184,95,63,.15); }
 .tool:disabled { opacity: .28; cursor: not-allowed; }
 .tooltip-anchor { position: relative; display: inline-grid; place-items: center; flex: 0 0 auto; }
+/* No `white-space: nowrap` here: it contradicted the max-width and spilled any description past
+   about forty-five characters. `width: max-content` already keeps short ones on a single line. */
 .app-tooltip {
   position: absolute; z-index: 50; left: 50%; bottom: calc(100% + 13px); display: flex; align-items: center; gap: 14px;
   width: max-content; max-width: 260px; padding: 10px 11px 10px 12px; color: #fffdfa; background: #292724;

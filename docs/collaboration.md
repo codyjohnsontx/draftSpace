@@ -4,7 +4,7 @@
 
 Live rooms are a temporary extension of Draftspace's local-first board, not cloud storage. The host opens a room, shares a 10-character code or invite URL, and explicitly admits each guest as a viewer or editor. A room supports the host plus three guests. No account is required; a display name and participant color are stored only as a small local browser preference.
 
-The host must remain available. When its connection drops, guests immediately become read-only for a 60-second grace period. A returning host refreshes guests from the authoritative board. If the grace period expires, the room ends. Ending or leaving a room does not modify a participant's unrelated local boards.
+The host must remain available. When its connection drops, guests immediately become read-only for a 60-second grace period. A returning host refreshes guests from the authoritative board. If the grace period expires, the room ends. The host must also be the tab editing the board: a read-only tab cannot open a room, and a live room ends if its host tab stops editing, because only the editing tab saves what guests draw. [`architecture.md`](architecture.md) records the design. Ending or leaving a room does not modify a participant's unrelated local boards.
 
 ## Data flow
 
