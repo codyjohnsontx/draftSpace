@@ -24,7 +24,6 @@ const roomCreationTimeoutMs = 10_000;
  * this board - and refuses the room when the answer is no.
  */
 const cannotHostMessage = "Another tab is editing this board, so it cannot be shared from here.";
-const hostingEndedMessage = "The live room closed because this tab is no longer editing this board.";
 
 type ConnectionDetails = { mode: "host" | "guest"; code: string; url: string; token?: string; profile: ParticipantProfile };
 
@@ -53,7 +52,7 @@ export class CollaborationController {
       const collaboration = useCollaborationStore.getState();
       if (collaboration.mode !== "host" || ["ended", "error"].includes(collaboration.status)) return;
       this.endRoom();
-      useCollaborationStore.getState().set({ error: hostingEndedMessage });
+      useCollaborationStore.getState().set({ hostingEndedByClaimLoss: true });
     });
     setLocalCommandAuthorizationProvider(() => {
       const state = useCollaborationStore.getState();
@@ -157,7 +156,7 @@ export class CollaborationController {
 
   private connect(details: ConnectionDetails) {
     this.connection = details; this.reconnectAttempt = 0; this.hostAttempt = null;
-    useCollaborationStore.getState().set({ mode: details.mode, status: "connecting", code: details.code, self: details.profile, boardReady: details.mode === "host", error: null });
+    useCollaborationStore.getState().set({ mode: details.mode, status: "connecting", code: details.code, self: details.profile, boardReady: details.mode === "host", error: null, hostingEndedByClaimLoss: false });
     this.openTransport();
   }
 

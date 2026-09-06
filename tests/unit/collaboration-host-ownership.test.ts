@@ -1,5 +1,8 @@
 import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
+import { createElement } from "react";
+import { act, render, screen } from "@testing-library/react";
 import { PROTOCOL_VERSION, type ClientMessage, type ParticipantProfile, type ServerMessage } from "@draftspace/collaboration-protocol";
+import { BoardAccessBanner } from "@/components/app-shell/board-access-banner";
 import { CollaborationController, collaborationController } from "@/features/collaboration/collaboration-controller";
 import type { CollaborationTransport } from "@/features/collaboration/collaboration-transport";
 import { createBoard, createShape } from "@/core/board/factory";
@@ -167,7 +170,30 @@ describe("hosting a live room needs the board", () => {
     expect(transport.ofType("host.end")).toHaveLength(1);
     const state = useCollaborationStore.getState();
     expect(state.mode).toBe("local");
-    expect(state.error).toBe("The live room closed because this tab is no longer editing this board.");
+    expect(state.hostingEndedByClaimLoss).toBe(true);
+  });
+
+  /**
+   * Ending the room resets the collaboration store, so a notice written into that store is read
+   * back from a store that has already forgotten the room. The host has to see the reason on a
+   * surface that is on screen for this exact transition, which is the read-only banner.
+   */
+  it("tells the host why the room closed, on the banner a tab that lost the board already shows", async () => {
+    render(createElement(BoardAccessBanner));
+    await hostAsOwner();
+
+    act(() => access("read-only"));
+
+    expect(screen.getByText(/The live room it was hosting closed/)).toBeVisible();
+  });
+
+  it("tells the host the room closed even when the handover lands this tab on a board it can edit", async () => {
+    render(createElement(BoardAccessBanner));
+    await hostAsOwner();
+
+    act(() => { access("pending"); access("owner"); });
+
+    expect(screen.getByText(/so the room ended and the people in it were disconnected/)).toBeVisible();
   });
 
   it("leaves a room alone while the tab keeps the board", async () => {

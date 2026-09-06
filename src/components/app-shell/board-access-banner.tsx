@@ -1,10 +1,12 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { Eye, PencilLine } from "lucide-react";
+import { Eye, PencilLine, Radio } from "lucide-react";
+import { useCollaborationStore } from "@/stores/collaboration-store";
 import { usePersistenceStore } from "@/stores/persistence-store";
 
 const TAKEOVER_NOTICE_MS = 6000;
+const ROOM_CLOSED_NOTICE_MS = 6000;
 
 /**
  * Says out loud why a tab cannot be edited. A canvas that quietly swallows input is worse
@@ -14,6 +16,7 @@ const TAKEOVER_NOTICE_MS = 6000;
 export function BoardAccessBanner() {
   const readOnly = usePersistenceStore((state) => state.boardAccess === "read-only");
   const [tookOver, setTookOver] = useState(false);
+  const [roomClosed, setRoomClosed] = useState(false);
 
   useEffect(() => {
     let timer: ReturnType<typeof setTimeout> | undefined;
@@ -30,9 +33,28 @@ export function BoardAccessBanner() {
     return () => { unsubscribe(); clearTimeout(timer); };
   }, []);
 
+  useEffect(() => {
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    // Ending the room resets the collaboration store, so that a room was live is readable only
+    // at the transition itself. Anything that asks afterwards is asking a store that has already
+    // forgotten, which is the same as not telling the host at all.
+    const unsubscribe = useCollaborationStore.subscribe((state, previous) => {
+      if (!state.hostingEndedByClaimLoss || state.hostingEndedByClaimLoss === previous.hostingEndedByClaimLoss) return;
+      clearTimeout(timer);
+      setRoomClosed(true);
+      timer = setTimeout(() => setRoomClosed(false), ROOM_CLOSED_NOTICE_MS);
+    });
+    return () => { unsubscribe(); clearTimeout(timer); };
+  }, []);
+
   if (readOnly) return <div className="board-access-banner" role="status">
     <Eye size={14} />
-    <span><strong>View only.</strong> Another tab is editing this board, so this one cannot change it. Close that tab and this one takes over.</span>
+    <span><strong>View only.</strong> Another tab is editing this board, so this one cannot change it. Close that tab and this one takes over.{roomClosed && " The live room it was hosting closed, and the people in it were disconnected."}</span>
+  </div>;
+
+  if (roomClosed) return <div className="board-access-banner" role="status">
+    <Radio size={14} />
+    <span><strong>Live room closed.</strong> This tab stopped editing the board it was hosting, so the room ended and the people in it were disconnected.</span>
   </div>;
 
   if (tookOver) return <div className="board-access-banner took-over" role="status">
