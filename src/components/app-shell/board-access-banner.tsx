@@ -39,8 +39,9 @@ export function BoardAccessBanner() {
     // at the transition itself. Anything that asks afterwards is asking a store that has already
     // forgotten, which is the same as not telling the host at all.
     const unsubscribe = useCollaborationStore.subscribe((state, previous) => {
-      if (!state.hostingEndedByClaimLoss || state.hostingEndedByClaimLoss === previous.hostingEndedByClaimLoss) return;
+      if (state.hostingEndedByClaimLoss === previous.hostingEndedByClaimLoss) return;
       clearTimeout(timer);
+      if (!state.hostingEndedByClaimLoss) { setRoomClosed(false); return; }
       setRoomClosed(true);
       timer = setTimeout(() => setRoomClosed(false), ROOM_CLOSED_NOTICE_MS);
     });

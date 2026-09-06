@@ -196,6 +196,17 @@ describe("hosting a live room needs the board", () => {
     expect(screen.getByText(/so the room ended and the people in it were disconnected/)).toBeVisible();
   });
 
+  it("retires the closed-room notice the moment this tab opens another room", async () => {
+    render(createElement(BoardAccessBanner));
+    await hostAsOwner();
+    act(() => { access("pending"); access("owner"); });
+    expect(screen.getByText(/so the room ended and the people in it were disconnected/)).toBeVisible();
+
+    await act(async () => { await controller.startHost(profile); });
+
+    expect(screen.queryByText(/so the room ended and the people in it were disconnected/)).not.toBeInTheDocument();
+  });
+
   it("leaves a room alone while the tab keeps the board", async () => {
     await hostAsOwner();
     transport.sent.length = 0;
