@@ -6,6 +6,8 @@ import { boardSchema } from "@/schemas/board-schema";
 import { parseBoardCommand, setLocalActorIdProvider, setLocalCommandAuthorizationProvider, type BoardCommandMetadata } from "@/core/commands/board-command";
 import { subscribeToBoardCommands, useBoardStore, type BoardCommandEvent } from "@/stores/board-store";
 import { useCollaborationStore } from "@/stores/collaboration-store";
+import { usePersistenceStore } from "@/stores/persistence-store";
+import { canEditBoard } from "@/hooks/use-can-edit-board";
 import { useViewportStore } from "@/stores/viewport-store";
 import { useSessionStore } from "@/stores/session-store";
 import { WebSocketCollaborationTransport, type CollaborationTransport } from "./collaboration-transport";
@@ -15,6 +17,14 @@ const wsUrl = () => process.env.NEXT_PUBLIC_COLLABORATION_WS_URL ?? "ws://127.0.
 const hostSessionKey = "draftspace:collaboration-host";
 const guestSessionKey = "draftspace:collaboration-guest";
 const roomCreationTimeoutMs = 10_000;
+/**
+ * A room is only as durable as the tab that hosts it. A tab that does not hold the board's
+ * claim saves nothing, so everything its guests draw is discarded the moment the room closes.
+ * Hosting therefore asks the same question every other write path asks - may this tab change
+ * this board - and refuses the room when the answer is no.
+ */
+const cannotHostMessage = "Another tab is editing this board, so it cannot be shared from here.";
+const hostingEndedMessage = "The live room closed because this tab is no longer editing this board.";
 
 type ConnectionDetails = { mode: "host" | "guest"; code: string; url: string; token?: string; profile: ParticipantProfile };
 
@@ -28,10 +38,22 @@ export class CollaborationController {
   private proposalQueue: CommandProposal[] = [];
   private proposalInFlight: string | null = null;
   private unsubscribeCommands: () => void;
+  private unsubscribeBoardAccess: () => void;
 
   constructor(transport: CollaborationTransport = new WebSocketCollaborationTransport()) {
     this.transport = transport;
     this.unsubscribeCommands = subscribeToBoardCommands((event) => this.onBoardCommand(event));
+    // Hosting is a state, not a moment: checking ownership only where the room is created would
+    // leave a room running in a tab that has since let the board go, discarding guests' work for
+    // exactly as long as it stayed open. Losing the claim ends the room and tells the guests,
+    // rather than leaving them drawing into a board nothing will save.
+    this.unsubscribeBoardAccess = usePersistenceStore.subscribe((state, previous) => {
+      if (state.boardAccess === previous.boardAccess || state.boardAccess === "owner") return;
+      const collaboration = useCollaborationStore.getState();
+      if (collaboration.mode !== "host" || ["ended", "error"].includes(collaboration.status)) return;
+      this.endRoom();
+      useCollaborationStore.getState().set({ error: hostingEndedMessage });
+    });
     setLocalCommandAuthorizationProvider(() => {
       const state = useCollaborationStore.getState();
       return state.mode !== "guest" || (state.status === "connected" && state.role === "editor");
@@ -39,6 +61,10 @@ export class CollaborationController {
   }
 
   async startHost(profile: ParticipantProfile) {
+    // The Share control is disabled for a tab that cannot edit, but the refusal lives here
+    // because this is what actually creates the room, and a restored session, a keyboard path,
+    // or any later caller reaches it without passing that control.
+    if (!canEditBoard()) { useCollaborationStore.getState().set({ error: cannotHostMessage }); return; }
     this.deliberateClose = false; this.appliedCommandIds.clear(); this.clearProposalQueue();
     useCollaborationStore.getState().set({ mode: "host", status: "creating", self: profile, boardReady: true, error: null });
     setLocalActorIdProvider(() => profile.id);
@@ -65,6 +91,11 @@ export class CollaborationController {
 
   resumeHost(): boolean {
     if (typeof sessionStorage === "undefined" || useCollaborationStore.getState().status !== "idle") return false;
+    // A reload is long enough for another tab to claim the board, so a stored host session is
+    // not on its own permission to reopen the room. The session is left in place rather than
+    // cleared: this tab may be promoted later, and the room is resumable until the server
+    // times the host out.
+    if (!canEditBoard()) return false;
     try {
       const stored = JSON.parse(sessionStorage.getItem(hostSessionKey) ?? "null") as ConnectionDetails | null;
       if (!stored || stored.mode !== "host" || !stored.code || !stored.token || !stored.profile) return false;
@@ -231,7 +262,7 @@ export class CollaborationController {
 
   private send(message: ClientMessage) { this.transport.send(message); }
   private removePending(participantId: string) { const current = useCollaborationStore.getState(); const pending = { ...current.pending }; delete pending[participantId]; current.set({ pending }); }
-  dispose() { this.leave(); this.unsubscribeCommands(); }
+  dispose() { this.leave(); this.unsubscribeCommands(); this.unsubscribeBoardAccess(); }
 }
 
 function sessionStoreSnapshot() {

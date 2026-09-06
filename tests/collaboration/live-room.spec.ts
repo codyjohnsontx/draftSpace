@@ -60,3 +60,29 @@ test("hosts an approved room with live edits, presence, roles, and personal undo
   await expect(guest.getByRole("heading", { name: "This room has ended" })).toBeVisible();
   await hostContext.close(); await guestContext.close();
 });
+
+/**
+ * The other tab on the same board saves nothing, so a room hosted from it would take its guests'
+ * edits, show them, and drop every one when the room closed. It is not offered the room, and says
+ * why alongside the rest of its read-only state. The refusal itself belongs to `startHost`, which
+ * is reachable without this control: see tests/unit/collaboration-host-ownership.test.ts.
+ */
+test("a tab another tab is editing is not offered a live room", async ({ context }) => {
+  const owner = await context.newPage();
+  await owner.goto("/");
+  await expect(owner.getByRole("main", { name: "Draftspace infinite canvas" })).toBeVisible();
+  await expect(owner.getByRole("button", { name: "Share board" })).toBeEnabled();
+
+  const reader = await context.newPage();
+  await reader.goto("/");
+  await expect(reader.locator(".save-status")).toHaveText("View only");
+
+  const share = reader.getByRole("button", { name: "Share board" });
+  await expect(share).toBeDisabled();
+  await expect(share).toHaveAccessibleDescription("Another tab is editing this board, so it cannot be shared from here");
+
+  // Closing the owning tab hands this one the board, and with it the room it was refused.
+  await owner.close();
+  await expect(reader.locator(".save-status")).toHaveText("Saved locally");
+  await expect(share).toBeEnabled();
+});

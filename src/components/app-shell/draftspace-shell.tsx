@@ -19,6 +19,7 @@ import { StyleInspector } from "@/components/inspector/style-inspector";
 import { BoardAccessBanner } from "./board-access-banner";
 import { collaborationController } from "@/features/collaboration/collaboration-controller";
 import { collaborationEnabled } from "@/features/collaboration/collaboration-enabled";
+import { useCanEditBoard } from "@/hooks/use-can-edit-board";
 
 export function DraftspaceShell() {
   useState(() => initializePerformanceMonitor());
@@ -40,7 +41,11 @@ export function DraftspaceShell() {
     }
     return () => { active = false; };
   }, [hydrateUiPreferences]);
-  useEffect(() => { if (liveCollaborationEnabled && board) collaborationController.resumeHost(); }, [board, liveCollaborationEnabled]);
+  // A stored host session only reopens once this tab is the one editing the board, so the resume
+  // waits on the claim rather than racing it: a tab that reloads into read-only tries again if a
+  // later promotion hands it the board back.
+  const canHostFromThisTab = useCanEditBoard();
+  useEffect(() => { if (liveCollaborationEnabled && board && canHostFromThisTab) collaborationController.resumeHost(); }, [board, canHostFromThisTab, liveCollaborationEnabled]);
   if (status === "recovery-required" && recovery) return <BoardRecoveryScreen recovery={recovery} controller={persistence} />;
   if (capabilities && !capabilities.canvas2d) return <UnsupportedBrowserScreen canDownloadBackup={Boolean(board)} onDownloadBackup={persistence.downloadCurrentBackup} />;
   if (!capabilities) return <div className="loading-canvas"><span /><p>Checking canvas support…</p></div>;
