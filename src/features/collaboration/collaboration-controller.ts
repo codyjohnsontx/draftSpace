@@ -37,6 +37,7 @@ export class CollaborationController {
   private appliedCommandIds = new Set<string>();
   private proposalQueue: CommandProposal[] = [];
   private proposalInFlight: string | null = null;
+  private hostAttempt: symbol | null = null;
   private unsubscribeCommands: () => void;
   private unsubscribeBoardAccess: () => void;
 
@@ -66,18 +67,30 @@ export class CollaborationController {
     // or any later caller reaches it without passing that control.
     if (!canEditBoard()) { useCollaborationStore.getState().set({ error: cannotHostMessage }); return; }
     this.deliberateClose = false; this.appliedCommandIds.clear(); this.clearProposalQueue();
+    const attempt = Symbol("live room"); this.hostAttempt = attempt;
     useCollaborationStore.getState().set({ mode: "host", status: "creating", self: profile, boardReady: true, error: null });
     setLocalActorIdProvider(() => profile.id);
     const abortController = new AbortController();
     const timeout = setTimeout(() => abortController.abort(), roomCreationTimeoutMs);
+    let connecting = false;
     try {
       const response = await fetch(`${httpUrl()}/rooms`, { method: "POST", signal: abortController.signal });
       if (!response.ok) throw new Error("Draftspace could not create a live room.");
       const room = await response.json() as { code: string; hostToken: string; websocketUrl?: string };
       const details = { mode: "host" as const, code: room.code, token: room.hostToken, profile, url: room.websocketUrl ?? `${wsUrl()}/rooms/${room.code}/connect` };
+      // The claim held when the room was asked for is not the claim held when it arrives. A
+      // handover that landed during the request has already retired this attempt, so the room
+      // is dropped rather than connected: reconnecting here would open a live room in a tab
+      // that saves nothing, through the one window a check before the request cannot see.
+      if (this.hostAttempt !== attempt) return;
+      if (!canEditBoard()) { this.leave(); useCollaborationStore.getState().set({ error: cannotHostMessage }); return; }
       sessionStorage.setItem(hostSessionKey, JSON.stringify(details));
+      connecting = true;
       this.connect(details);
-    } catch (error) { useCollaborationStore.getState().set({ status: "error", error: error instanceof Error ? error.message : "Draftspace could not create a live room." }); }
+    } catch (error) {
+      if (!connecting && this.hostAttempt !== attempt) return;
+      useCollaborationStore.getState().set({ status: "error", error: error instanceof Error ? error.message : "Draftspace could not create a live room." });
+    }
     finally { clearTimeout(timeout); }
   }
 
@@ -120,7 +133,7 @@ export class CollaborationController {
   kick(participantId: string) { this.send({ type: "host.kick", participantId }); }
   endRoom() { this.send({ type: "host.end" }); this.leave(true); }
   leave(forgetSession = false) {
-    this.deliberateClose = true; if (this.reconnectTimer) clearTimeout(this.reconnectTimer);
+    this.deliberateClose = true; this.hostAttempt = null; if (this.reconnectTimer) clearTimeout(this.reconnectTimer);
     if (forgetSession && useCollaborationStore.getState().mode === "guest") this.send({ type: "room.leave" });
     this.transport.close();
     if (forgetSession && typeof sessionStorage !== "undefined") { sessionStorage.removeItem(hostSessionKey); sessionStorage.removeItem(guestSessionKey); }
@@ -143,7 +156,7 @@ export class CollaborationController {
   }
 
   private connect(details: ConnectionDetails) {
-    this.connection = details; this.reconnectAttempt = 0;
+    this.connection = details; this.reconnectAttempt = 0; this.hostAttempt = null;
     useCollaborationStore.getState().set({ mode: details.mode, status: "connecting", code: details.code, self: details.profile, boardReady: details.mode === "host", error: null });
     this.openTransport();
   }

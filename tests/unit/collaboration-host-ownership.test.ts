@@ -103,6 +103,42 @@ describe("hosting a live room needs the board", () => {
     expect(JSON.parse(sessionStorage.getItem("draftspace:collaboration-host") ?? "null")).toMatchObject({ mode: "host", code: "ABCD" });
   });
 
+  /**
+   * The claim is proved again when the room comes back, not only when it is asked for: a
+   * handover that lands during the request would otherwise connect a read-only tab the
+   * moment the POST resolved, which is the failure this refusal exists to prevent.
+   */
+  it("drops a room the tab lost the board for while it was being created", async () => {
+    let deliverRoom: (response: Response) => void = () => {};
+    fetchMock.mockReturnValue(new Promise<Response>((resolve) => { deliverRoom = resolve; }));
+    const started = controller.startHost(profile);
+
+    access("read-only");
+    deliverRoom(roomResponse);
+    await started;
+
+    expect(transport.url).toBeNull();
+    expect(sessionStorage.getItem("draftspace:collaboration-host")).toBeNull();
+    const state = useCollaborationStore.getState();
+    expect(state.mode).toBe("local");
+    expect(state.status).toBe("idle");
+  });
+
+  it("drops a room the claim was handed over during, even once this tab holds a board again", async () => {
+    let deliverRoom: (response: Response) => void = () => {};
+    fetchMock.mockReturnValue(new Promise<Response>((resolve) => { deliverRoom = resolve; }));
+    const started = controller.startHost(profile);
+
+    access("pending");
+    access("owner");
+    deliverRoom(roomResponse);
+    await started;
+
+    expect(transport.url).toBeNull();
+    expect(sessionStorage.getItem("draftspace:collaboration-host")).toBeNull();
+    expect(useCollaborationStore.getState().mode).toBe("local");
+  });
+
   it("refuses to restore a stored host session in a tab that no longer holds the board", () => {
     sessionStorage.setItem("draftspace:collaboration-host", JSON.stringify({ mode: "host", code: "ABCD", token: "host-token", url: "ws://room/connect", profile }));
     access("read-only");
