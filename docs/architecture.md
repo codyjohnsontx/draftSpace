@@ -36,7 +36,37 @@ Each room is a Cloudflare Durable Object. It stores only room metadata: a room i
 
 Autosave is coordinated outside React with a 500 ms debounce, revision-aware stale-write protection, bounded retries, and lifecycle flushing. The dedicated Zustand persistence store owns persistence status and the list of boards this browser holds, rather than board history. A small localStorage key records only the last-opened board ID. When IndexedDB is unavailable, Draftspace uses an explicitly labeled in-memory session and offers an emergency JSON backup.
 
-A browser can hold more than one board, so the repository's summary listing is surfaced beside the board name and the same last-opened key is what switching writes: the board picked is the board the next load opens. Switching settles the outgoing board's autosave before board state changes, because anything still inside the debounce or still waiting out a retry belongs to that document and nothing afterward would ever write it; a retry mid-backoff is attempted rather than skipped, and work storage will not take holds the switch back instead of being dropped behind a menu that reported success. A board with no autosave coordinator to ask, which is what every drop to session-only leaves behind, is asked a different question, because nothing will ever write what it holds: whether storage already holds it. That is the same stamp the retry compares against, so a tab whose claim broke mid-switch - which settled its board on the way out - can pick again rather than being refused forever to protect work that is not there, and a tab whose document has moved on since - drawing does that, and so does a pan while the board restores its viewport - is refused and told that the board is not being saved and storage has to come back first, rather than told a save was tried and failed. That one gate is what the switch asks, rather than each way a save can fail being caught separately, and a switch it refuses preserves the failure state it found, though not the pending wait: that retry is spent immediately rather than skipped, and a write that fails again advances the ladder a rung and starts its wait over. History, selection, and any in-flight style preview are dropped with the board that was left - a preview is keyed by element id, and a recovered copy carries the same ids as the board it was copied from, so one left behind would repaint the newly opened board and commit against it - and a switch adds no write of its own beyond the migration write-back any load of an older document already performs. Only records that parsed are listed, and one that has become unreadable between listing and opening leaves the open board exactly where it was rather than escalating a board the user did not ask about to the recovery screen; its row stays listed until the next refresh and says so, because a click that opened nothing must not look like a click that worked. With a single stored board the control is not rendered at all, so an ordinary session gains no menu that can only ever name the board already on screen, and it is offered neither to a collaboration guest, who is in someone else's room, nor to a host whose room is still live, reconnecting included, because its guests are served from the board that is open.
+### Switching boards
+
+#### The switcher and the last-opened key
+
+A browser can hold more than one board, so the repository's summary listing is surfaced beside the board name and the same last-opened key is what switching writes: the board picked is the board the next load opens.
+
+#### Settling the outgoing board
+
+Switching settles the outgoing board's autosave before board state changes, because anything still inside the debounce or still waiting out a retry belongs to that document and nothing afterward would ever write it; a retry mid-backoff is attempted rather than skipped, and work storage will not take holds the switch back instead of being dropped behind a menu that reported success.
+
+#### The session-only gate
+
+A board with no autosave coordinator to ask, which is what every drop to session-only leaves behind, is asked a different question, because nothing will ever write what it holds: whether storage already holds it.
+
+That is the same stamp the retry compares against, so a tab whose claim broke mid-switch - which settled its board on the way out - can pick again rather than being refused forever to protect work that is not there, and a tab whose document has moved on since - drawing does that, and so does a pan while the board restores its viewport - is refused and told that the board is not being saved and storage has to come back first, rather than told a save was tried and failed.
+
+#### What a refused switch preserves
+
+That one gate is what the switch asks, rather than each way a save can fail being caught separately, and a switch it refuses preserves the failure state it found, though not the pending wait: that retry is spent immediately rather than skipped, and a write that fails again advances the ladder a rung and starts its wait over.
+
+#### What a switch drops, and what it writes
+
+History, selection, and any in-flight style preview are dropped with the board that was left - a preview is keyed by element id, and a recovered copy carries the same ids as the board it was copied from, so one left behind would repaint the newly opened board and commit against it - and a switch adds no write of its own beyond the migration write-back any load of an older document already performs.
+
+#### Listing, and a record that stopped parsing
+
+Only records that parsed are listed, and one that has become unreadable between listing and opening leaves the open board exactly where it was rather than escalating a board the user did not ask about to the recovery screen; its row stays listed until the next refresh and says so, because a click that opened nothing must not look like a click that worked.
+
+#### When the switcher is offered
+
+With a single stored board the control is not rendered at all, so an ordinary session gains no menu that can only ever name the board already on screen, and it is offered neither to a collaboration guest, who is in someone else's room, nor to a host whose room is still live, reconnecting included, because its guests are served from the board that is open.
 
 ### One tab owns a board
 
