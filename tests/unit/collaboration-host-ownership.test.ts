@@ -31,6 +31,10 @@ const roomResponse = { ok: true, json: async () => ({ code: "ABCD", hostToken: "
 
 const access = (boardAccess: BoardAccess) => usePersistenceStore.setState({ boardAccess });
 
+/** The sessionStorage record a reload leaves behind, for the board the room was opened on. */
+const storeHostSession = (boardId: string) =>
+  sessionStorage.setItem("draftspace:collaboration-host", JSON.stringify({ mode: "host", code: "ABCD", token: "host-token", url: "ws://room/connect", profile, boardId }));
+
 // Importing the module constructs the app's own controller against a real WebSocket transport,
 // and it listens to the same stores these tests drive. Retiring it leaves one listener.
 beforeAll(() => collaborationController.dispose());
@@ -103,7 +107,7 @@ describe("hosting a live room needs the board", () => {
     expect(transport.url).toBe("ws://room/connect");
     expect(state.mode).toBe("host");
     expect(useCollaborationStore.getState().status).toBe("connected");
-    expect(JSON.parse(sessionStorage.getItem("draftspace:collaboration-host") ?? "null")).toMatchObject({ mode: "host", code: "ABCD" });
+    expect(JSON.parse(sessionStorage.getItem("draftspace:collaboration-host") ?? "null")).toMatchObject({ mode: "host", code: "ABCD", boardId: useBoardStore.getState().board!.id });
   });
 
   /**
@@ -143,7 +147,7 @@ describe("hosting a live room needs the board", () => {
   });
 
   it("refuses to restore a stored host session in a tab that no longer holds the board", () => {
-    sessionStorage.setItem("draftspace:collaboration-host", JSON.stringify({ mode: "host", code: "ABCD", token: "host-token", url: "ws://room/connect", profile }));
+    storeHostSession(useBoardStore.getState().board!.id);
     access("read-only");
 
     expect(controller.resumeHost()).toBe(false);
@@ -155,6 +159,55 @@ describe("hosting a live room needs the board", () => {
     access("owner");
     expect(controller.resumeHost()).toBe(true);
     expect(transport.url).toBe("ws://room/connect");
+  });
+
+  /**
+   * A room serves the board this tab has open, so reconnecting one under a different board
+   * would show the guests a board nobody invited them to. The room is the first board's, and
+   * the stored session is kept rather than dropped: reopening that board here resumes it.
+   */
+  it("refuses to restore a stored host session onto a board it was not hosting", () => {
+    storeHostSession("board-the-room-was-opened-on");
+    access("owner");
+
+    expect(controller.resumeHost()).toBe(false);
+    expect(transport.url).toBeNull();
+    expect(sessionStorage.getItem("draftspace:collaboration-host")).not.toBeNull();
+
+    useBoardStore.getState().setBoard({ ...createBoard("Payments architecture"), id: "board-the-room-was-opened-on" });
+
+    expect(controller.resumeHost()).toBe(true);
+    expect(transport.url).toBe("ws://room/connect");
+  });
+
+  it("refuses to restore a stored host session that does not say which board it was hosting", () => {
+    sessionStorage.setItem("draftspace:collaboration-host", JSON.stringify({ mode: "host", code: "ABCD", token: "host-token", url: "ws://room/connect", profile }));
+    access("owner");
+
+    expect(controller.resumeHost()).toBe(false);
+    expect(transport.url).toBeNull();
+  });
+
+  /**
+   * The claim can go while the room is still being asked for, and dropping the attempt then is
+   * right. Telling the user the people in the room were disconnected is not: the code has not
+   * come back yet, so there is nobody in it to disconnect.
+   */
+  it("drops a room the claim went during creation without telling the host anyone was disconnected", async () => {
+    render(createElement(BoardAccessBanner));
+    let deliverRoom: (response: Response) => void = () => {};
+    fetchMock.mockReturnValue(new Promise<Response>((resolve) => { deliverRoom = resolve; }));
+    const started = controller.startHost(profile);
+
+    act(() => access("read-only"));
+    deliverRoom(roomResponse);
+    await act(async () => { await started; });
+
+    expect(transport.ofType("host.end")).toHaveLength(1);
+    expect(transport.url).toBeNull();
+    expect(useCollaborationStore.getState().mode).toBe("local");
+    expect(screen.queryByText(/The live room it was hosting closed/)).not.toBeInTheDocument();
+    expect(screen.queryByText(/so the room ended and the people in it were disconnected/)).not.toBeInTheDocument();
   });
 
   /**

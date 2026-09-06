@@ -25,7 +25,12 @@ const roomCreationTimeoutMs = 10_000;
  */
 const cannotHostMessage = "Another tab is editing this board, so it cannot be shared from here.";
 
-type ConnectionDetails = { mode: "host" | "guest"; code: string; url: string; token?: string; profile: ParticipantProfile };
+/**
+ * `boardId` is the board a host room was opened on. A room serves whatever board this tab has
+ * open, so a stored host session that does not name its board can be reconnected onto another
+ * one, and the guests invited to the first board would be shown the second.
+ */
+type ConnectionDetails = { mode: "host" | "guest"; code: string; url: string; token?: string; profile: ParticipantProfile; boardId?: string };
 
 export class CollaborationController {
   private transport: CollaborationTransport;
@@ -49,9 +54,14 @@ export class CollaborationController {
     // rather than leaving them drawing into a board nothing will save.
     this.unsubscribeBoardAccess = usePersistenceStore.subscribe((state, previous) => {
       if (state.boardAccess === previous.boardAccess || state.boardAccess === "owner") return;
-      if (!isHostingLiveRoom(useCollaborationStore.getState())) return;
+      const collaboration = useCollaborationStore.getState();
+      if (!isHostingLiveRoom(collaboration)) return;
+      // A room still being created has reached nobody: no guest can have joined a code the
+      // server has not handed back yet. The attempt is dropped either way, but telling the
+      // user people were disconnected from it would describe a room that never existed.
+      const roomWasOpen = collaboration.status !== "creating";
       this.endRoom();
-      useCollaborationStore.getState().set({ hostingEndedByClaimLoss: true });
+      if (roomWasOpen) useCollaborationStore.getState().set({ hostingEndedByClaimLoss: true });
     });
     setLocalCommandAuthorizationProvider(() => {
       const state = useCollaborationStore.getState();
@@ -75,7 +85,10 @@ export class CollaborationController {
       const response = await fetch(`${httpUrl()}/rooms`, { method: "POST", signal: abortController.signal });
       if (!response.ok) throw new Error("Draftspace could not create a live room.");
       const room = await response.json() as { code: string; hostToken: string; websocketUrl?: string };
-      const details = { mode: "host" as const, code: room.code, token: room.hostToken, profile, url: room.websocketUrl ?? `${wsUrl()}/rooms/${room.code}/connect` };
+      // The room is bound to the board it is opened on, and carries that board through
+      // sessionStorage, so what it serves is a fact about the room rather than whatever this
+      // tab happens to have open when it next reconnects.
+      const details = { mode: "host" as const, code: room.code, token: room.hostToken, profile, boardId: useBoardStore.getState().board?.id, url: room.websocketUrl ?? `${wsUrl()}/rooms/${room.code}/connect` };
       // The claim held when the room was asked for is not the claim held when it arrives. A
       // handover that landed during the request has already retired this attempt, so the room
       // is dropped rather than connected: reconnecting here would open a live room in a tab
@@ -110,6 +123,12 @@ export class CollaborationController {
     try {
       const stored = JSON.parse(sessionStorage.getItem(hostSessionKey) ?? "null") as ConnectionDetails | null;
       if (!stored || stored.mode !== "host" || !stored.code || !stored.token || !stored.profile) return false;
+      // The room belongs to the board it was opened on, so it reopens on that board or not at
+      // all: reconnecting it under another one would hand the guests a board they were never
+      // invited to. A session for a board this tab does not have open is kept rather than
+      // cleared, exactly as a refusal for a lost claim is - the room stays the other board's
+      // and resumes if that board comes back here, and the server times the host out otherwise.
+      if (!stored.boardId || stored.boardId !== useBoardStore.getState().board?.id) return false;
       this.deliberateClose = false; this.appliedCommandIds.clear(); this.clearProposalQueue(); setLocalActorIdProvider(() => stored.profile.id); this.connect(stored); return true;
     } catch { return false; }
   }
