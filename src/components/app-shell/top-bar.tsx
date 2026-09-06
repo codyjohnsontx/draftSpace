@@ -11,7 +11,7 @@ import { InspectorModeControls } from "@/components/inspector/inspector-mode-con
 import { useUiPreferencesStore } from "@/stores/ui-preferences-store";
 import { ShareRoomDialog } from "@/components/collaboration/share-room-dialog";
 import { LiveRoomStatus } from "@/components/collaboration/live-room-status";
-import { useCollaborationStore } from "@/stores/collaboration-store";
+import { isHostingLiveRoom, useCollaborationStore } from "@/stores/collaboration-store";
 import { useCanEditBoard } from "@/hooks/use-can-edit-board";
 import { collaborationEnabled } from "@/features/collaboration/collaboration-enabled";
 
@@ -23,7 +23,7 @@ export function TopBar({ persistence }: { persistence?: PersistenceController })
   const [inspectorMenuOpen, setInspectorMenuOpen] = useState(false);
   const [shareOpen, setShareOpen] = useState(false); const collaborationMode = useCollaborationStore((state) => state.mode); const collaborationStatus = useCollaborationStore((state) => state.status); const collaborationSelf = useCollaborationStore((state) => state.self); const participantCount = useCollaborationStore((state) => Object.keys(state.participants).length + 1); const pendingCount = useCollaborationStore((state) => Object.keys(state.pending).length);
   const readOnly = !useCanEditBoard();
-  const hostingLiveRoom = collaborationMode === "host" && !["ended", "error"].includes(collaborationStatus);
+  const hostingLiveRoom = isHostingLiveRoom({ mode: collaborationMode, status: collaborationStatus });
   const actorId = collaborationSelf?.id ?? "local";
   const canUndo = history.undo.some((entry) => entry.metadata?.actorId === actorId);
   const canRedo = history.redo.some((entry) => entry.metadata?.actorId === actorId);
@@ -52,7 +52,11 @@ export function TopBar({ persistence }: { persistence?: PersistenceController })
     <div className="top-actions">
       {persistence ? <PersistenceStatus controller={persistence} /> : <LiveRoomStatus />}
       <Tooltip side="bottom" label={viewMode === "canvas" ? "3D space" : "2D canvas"} description={viewMode === "canvas" ? "View this board as a tiered 3D system diagram" : "Back to the flat whiteboard"}>{(tooltipId) => <button type="button" className={`icon-button ${viewMode === "space" ? "live" : ""}`} aria-label={viewMode === "canvas" ? "Switch to 3D space" : "Switch to 2D canvas"} aria-describedby={tooltipId} onClick={() => useUiPreferencesStore.getState().setViewMode(viewMode === "canvas" ? "space" : "canvas")}>{viewMode === "canvas" ? <Boxes size={17} /> : <PencilRuler size={17} />}</button>}</Tooltip>
-      {persistence && collaborationEnabled && <Tooltip side="bottom" label={collaborationMode === "host" ? "Live room" : "Share"} description={pendingCount ? `${pendingCount} join request${pendingCount === 1 ? "" : "s"} waiting` : collaborationMode === "host" ? `${participantCount} people connected` : "Invite people into this board"}>{(tooltipId) => <button ref={shareButtonRef} type="button" className={`icon-button share-button ${collaborationMode === "host" && collaborationStatus === "connected" ? "live" : ""} ${pendingCount ? "pending" : ""}`} aria-label="Share board" aria-describedby={tooltipId} onClick={() => setShareOpen(true)}>{collaborationMode === "host" ? <Radio size={17} /> : <UserRoundPlus size={17} />}{collaborationMode === "host" && <b>{pendingCount || participantCount}</b>}</button>}</Tooltip>}
+      {/* A tab that cannot edit this board saves nothing, so a room hosted from here would
+          discard everything its guests draw. The control is disabled rather than hidden, and
+          says why on hover, so the reason reads the way the disabled board name beside it and
+          the view-only banner already do. `startHost` refuses the room regardless. */}
+      {persistence && collaborationEnabled && <Tooltip side="bottom" label={collaborationMode === "host" ? "Live room" : "Share"} description={readOnly ? "Only the tab editing this board can share it" : pendingCount ? `${pendingCount} join request${pendingCount === 1 ? "" : "s"} waiting` : collaborationMode === "host" ? `${participantCount} people connected` : "Invite people into this board"}>{(tooltipId) => <button ref={shareButtonRef} type="button" className={`icon-button share-button ${collaborationMode === "host" && collaborationStatus === "connected" ? "live" : ""} ${pendingCount ? "pending" : ""}`} aria-label="Share board" aria-describedby={tooltipId} disabled={readOnly} onClick={() => setShareOpen(true)}>{collaborationMode === "host" ? <Radio size={17} /> : <UserRoundPlus size={17} />}{collaborationMode === "host" && <b>{pendingCount || participantCount}</b>}</button>}</Tooltip>}
       <span className="divider" />
       <div className="inspector-menu-wrap" ref={inspectorMenuRef} onKeyDown={(event) => {
         if (event.key === "Escape") { setInspectorMenuOpen(false); inspectorButtonRef.current?.focus(); return; }

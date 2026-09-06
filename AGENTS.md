@@ -5,6 +5,7 @@ This file is the project's committed home for project-intrinsic agent knowledge:
 - Full validation: `npm run typecheck && npm run lint && npm test && npm run build`, then `CI=1 npm run test:e2e` (CI=1 serializes workers; without it the WebGL-heavy landing/space specs starve each other and fail spuriously - see the comment in `playwright.config.ts`), `npm run test:performance`, `npm run test:collaboration`, and `npm run collaboration:test` for the worker. E2e and performance boot `next start`, so `npm run build` must run first; override ports with `PLAYWRIGHT_PORT` when 3107/3108 are taken.
 - Driving the canvas with synthetic events (outside Playwright): the workspace commits each gesture to React state on `pointerdown`, so a same-tick down/move/up silently no-ops. Space `PointerEvent`s across ticks (a `requestAnimationFrame` or two between dispatches). Real CDP input does not have this problem.
 - Asserting in e2e that a gesture changed *nothing* in the stored board: the board reaches IndexedDB through the autosave coordinator's 500ms debounce (`src/features/persistence/autosave-coordinator.ts`), so an immediate read, or `expect.poll` for the unchanged value, passes before a wrong write could have landed. Wait past the debounce first. Note `data-element-count` is `board.elementIds.length` only, so it can never speak for connectors.
+- Unit-testing `collaboration-controller.ts`: importing it constructs the app's own controller against a real WebSocket transport, subscribed to the same stores a test drives, so two controllers race over one store. Dispose the exported `collaborationController` once, then drive your own instance built on a fake `CollaborationTransport`.
 - Schema changes: a new field with a correct default costs no schema version - add it to the Zod schema with `.default(...)` and it parses on older stored documents (see "Schema evolution" in `docs/architecture.md`). Bump the version only for changes older documents cannot default their way through, such as new element types.
 
 ## Code review convention
@@ -21,14 +22,15 @@ the branch is finished.
 
 **One tab owns a board.** Only the tab holding the board's claim may edit or save it; every other tab on the same board is read-only. Two deliberate exceptions read as bugs and are not: without Web Locks the claim cannot be enforced, so each tab claims outright rather than being stranded read-only, and a tab that cannot write to storage at all stays editable, because a tab that cannot write cannot overwrite anyone.
 
-Four rules bind new code:
+Five rules bind new code:
 
 - Edit rights are never wider than the claim actually held, mid-transition included. Work resuming after an `await` proves it still holds its lease with `boardClaimIsCurrent`, never with the board id.
 - Any control that mutates the document gates on `useCanEditBoard()` / `canEditBoard()` (`src/hooks/use-can-edit-board.ts`) rather than reading the collaboration store; `dispatchCommand` is the backstop, not the gate.
 - Any write path runs only when the tab owns the board, and anything that changes which board is open hands the claim over with it.
+- Offering the board to other people is a write path too, and one that stays open: hosting a live room needs the claim when the room is created, when a stored host session is restored, and for as long as the room runs (`src/features/collaboration/collaboration-controller.ts`). A tab that hosts without the claim saves nothing, so its guests' work is discarded when the room closes.
 - Holding the claim makes a write exclusive, not current, so `storedStamp` is the second precondition. It answers two questions - has the stored record moved on, and is a tab with no coordinator left holding work nothing will write - so every writer refreshes it and every path that puts a stored board on screen records it (`src/features/persistence/stored-board-stamp.ts`). Its currency is the document's `stateId`, replaced by every mutation, never `updatedAt`: a millisecond timestamp collides across two mutations in one tick, and the switch then discards unsaved work silently.
 
-Design and the alternatives rejected: "One tab owns a board" in `docs/architecture.md`. What these rules actually produce is pinned by `tests/e2e/tab-ownership.spec.ts` and `tests/integration/board-switching.test.ts`.
+Design and the alternatives rejected: "One tab owns a board" in `docs/architecture.md`. What these rules actually produce is pinned by `tests/e2e/tab-ownership.spec.ts`, `tests/integration/board-switching.test.ts`, and `tests/unit/collaboration-host-ownership.test.ts`.
 
 ## Maintaining this file
 

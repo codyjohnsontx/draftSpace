@@ -5,7 +5,9 @@ import { PROTOCOL_VERSION } from "@draftspace/collaboration-protocol";
 import { boardSchema } from "@/schemas/board-schema";
 import { parseBoardCommand, setLocalActorIdProvider, setLocalCommandAuthorizationProvider, type BoardCommandMetadata } from "@/core/commands/board-command";
 import { subscribeToBoardCommands, useBoardStore, type BoardCommandEvent } from "@/stores/board-store";
-import { useCollaborationStore } from "@/stores/collaboration-store";
+import { isHostingLiveRoom, useCollaborationStore } from "@/stores/collaboration-store";
+import { usePersistenceStore } from "@/stores/persistence-store";
+import { canEditBoard } from "@/hooks/use-can-edit-board";
 import { useViewportStore } from "@/stores/viewport-store";
 import { useSessionStore } from "@/stores/session-store";
 import { WebSocketCollaborationTransport, type CollaborationTransport } from "./collaboration-transport";
@@ -15,8 +17,20 @@ const wsUrl = () => process.env.NEXT_PUBLIC_COLLABORATION_WS_URL ?? "ws://127.0.
 const hostSessionKey = "draftspace:collaboration-host";
 const guestSessionKey = "draftspace:collaboration-guest";
 const roomCreationTimeoutMs = 10_000;
+/**
+ * A room is only as durable as the tab that hosts it. A tab that does not hold the board's
+ * claim saves nothing, so everything its guests draw is discarded the moment the room closes.
+ * Hosting therefore asks the same question every other write path asks - may this tab change
+ * this board - and refuses the room when the answer is no.
+ */
+const cannotHostMessage = "Another tab is editing this board, so it cannot be shared from here.";
 
-type ConnectionDetails = { mode: "host" | "guest"; code: string; url: string; token?: string; profile: ParticipantProfile };
+/**
+ * `boardId` is the board a host room was opened on. A room serves whatever board this tab has
+ * open, so a stored host session that does not name its board can be reconnected onto another
+ * one, and the guests invited to the first board would be shown the second.
+ */
+type ConnectionDetails = { mode: "host" | "guest"; code: string; url: string; token?: string; profile: ParticipantProfile; boardId?: string };
 
 export class CollaborationController {
   private transport: CollaborationTransport;
@@ -27,11 +41,28 @@ export class CollaborationController {
   private appliedCommandIds = new Set<string>();
   private proposalQueue: CommandProposal[] = [];
   private proposalInFlight: string | null = null;
+  private hostAttempt: symbol | null = null;
   private unsubscribeCommands: () => void;
+  private unsubscribeBoardAccess: () => void;
 
   constructor(transport: CollaborationTransport = new WebSocketCollaborationTransport()) {
     this.transport = transport;
     this.unsubscribeCommands = subscribeToBoardCommands((event) => this.onBoardCommand(event));
+    // Hosting is a state, not a moment: checking ownership only where the room is created would
+    // leave a room running in a tab that has since let the board go, discarding guests' work for
+    // exactly as long as it stayed open. Losing the claim ends the room and tells the guests,
+    // rather than leaving them drawing into a board nothing will save.
+    this.unsubscribeBoardAccess = usePersistenceStore.subscribe((state, previous) => {
+      if (state.boardAccess === previous.boardAccess || state.boardAccess === "owner") return;
+      const collaboration = useCollaborationStore.getState();
+      if (!isHostingLiveRoom(collaboration)) return;
+      // A room still being created has reached nobody: no guest can have joined a code the
+      // server has not handed back yet. The attempt is dropped either way, but telling the
+      // user people were disconnected from it would describe a room that never existed.
+      const roomWasOpen = collaboration.status !== "creating";
+      this.endRoom();
+      if (roomWasOpen) useCollaborationStore.getState().set({ hostingEndedByClaimLoss: true });
+    });
     setLocalCommandAuthorizationProvider(() => {
       const state = useCollaborationStore.getState();
       return state.mode !== "guest" || (state.status === "connected" && state.role === "editor");
@@ -39,19 +70,38 @@ export class CollaborationController {
   }
 
   async startHost(profile: ParticipantProfile) {
+    // The Share control is disabled for a tab that cannot edit, but the refusal lives here
+    // because this is what actually creates the room, and a restored session, a keyboard path,
+    // or any later caller reaches it without passing that control.
+    if (!canEditBoard()) { useCollaborationStore.getState().set({ error: cannotHostMessage }); return; }
     this.deliberateClose = false; this.appliedCommandIds.clear(); this.clearProposalQueue();
+    const attempt = Symbol("live room"); this.hostAttempt = attempt;
     useCollaborationStore.getState().set({ mode: "host", status: "creating", self: profile, boardReady: true, error: null });
     setLocalActorIdProvider(() => profile.id);
     const abortController = new AbortController();
     const timeout = setTimeout(() => abortController.abort(), roomCreationTimeoutMs);
+    let connecting = false;
     try {
       const response = await fetch(`${httpUrl()}/rooms`, { method: "POST", signal: abortController.signal });
       if (!response.ok) throw new Error("Draftspace could not create a live room.");
       const room = await response.json() as { code: string; hostToken: string; websocketUrl?: string };
-      const details = { mode: "host" as const, code: room.code, token: room.hostToken, profile, url: room.websocketUrl ?? `${wsUrl()}/rooms/${room.code}/connect` };
+      // The room is bound to the board it is opened on, and carries that board through
+      // sessionStorage, so what it serves is a fact about the room rather than whatever this
+      // tab happens to have open when it next reconnects.
+      const details = { mode: "host" as const, code: room.code, token: room.hostToken, profile, boardId: useBoardStore.getState().board?.id, url: room.websocketUrl ?? `${wsUrl()}/rooms/${room.code}/connect` };
+      // The claim held when the room was asked for is not the claim held when it arrives. A
+      // handover that landed during the request has already retired this attempt, so the room
+      // is dropped rather than connected: reconnecting here would open a live room in a tab
+      // that saves nothing, through the one window a check before the request cannot see.
+      if (this.hostAttempt !== attempt) return;
+      if (!canEditBoard()) { this.leave(); useCollaborationStore.getState().set({ error: cannotHostMessage }); return; }
       sessionStorage.setItem(hostSessionKey, JSON.stringify(details));
+      connecting = true;
       this.connect(details);
-    } catch (error) { useCollaborationStore.getState().set({ status: "error", error: error instanceof Error ? error.message : "Draftspace could not create a live room." }); }
+    } catch (error) {
+      if (!connecting && this.hostAttempt !== attempt) return;
+      useCollaborationStore.getState().set({ status: "error", error: error instanceof Error ? error.message : "Draftspace could not create a live room." });
+    }
     finally { clearTimeout(timeout); }
   }
 
@@ -65,9 +115,20 @@ export class CollaborationController {
 
   resumeHost(): boolean {
     if (typeof sessionStorage === "undefined" || useCollaborationStore.getState().status !== "idle") return false;
+    // A reload is long enough for another tab to claim the board, so a stored host session is
+    // not on its own permission to reopen the room. The session is left in place rather than
+    // cleared: this tab may be promoted later, and the room is resumable until the server
+    // times the host out.
+    if (!canEditBoard()) return false;
     try {
       const stored = JSON.parse(sessionStorage.getItem(hostSessionKey) ?? "null") as ConnectionDetails | null;
       if (!stored || stored.mode !== "host" || !stored.code || !stored.token || !stored.profile) return false;
+      // The room belongs to the board it was opened on, so it reopens on that board or not at
+      // all: reconnecting it under another one would hand the guests a board they were never
+      // invited to. A session for a board this tab does not have open is kept rather than
+      // cleared, exactly as a refusal for a lost claim is - the room stays the other board's
+      // and resumes if that board comes back here, and the server times the host out otherwise.
+      if (!stored.boardId || stored.boardId !== useBoardStore.getState().board?.id) return false;
       this.deliberateClose = false; this.appliedCommandIds.clear(); this.clearProposalQueue(); setLocalActorIdProvider(() => stored.profile.id); this.connect(stored); return true;
     } catch { return false; }
   }
@@ -89,7 +150,7 @@ export class CollaborationController {
   kick(participantId: string) { this.send({ type: "host.kick", participantId }); }
   endRoom() { this.send({ type: "host.end" }); this.leave(true); }
   leave(forgetSession = false) {
-    this.deliberateClose = true; if (this.reconnectTimer) clearTimeout(this.reconnectTimer);
+    this.deliberateClose = true; this.hostAttempt = null; if (this.reconnectTimer) clearTimeout(this.reconnectTimer);
     if (forgetSession && useCollaborationStore.getState().mode === "guest") this.send({ type: "room.leave" });
     this.transport.close();
     if (forgetSession && typeof sessionStorage !== "undefined") { sessionStorage.removeItem(hostSessionKey); sessionStorage.removeItem(guestSessionKey); }
@@ -112,8 +173,8 @@ export class CollaborationController {
   }
 
   private connect(details: ConnectionDetails) {
-    this.connection = details; this.reconnectAttempt = 0;
-    useCollaborationStore.getState().set({ mode: details.mode, status: "connecting", code: details.code, self: details.profile, boardReady: details.mode === "host", error: null });
+    this.connection = details; this.reconnectAttempt = 0; this.hostAttempt = null;
+    useCollaborationStore.getState().set({ mode: details.mode, status: "connecting", code: details.code, self: details.profile, boardReady: details.mode === "host", error: null, hostingEndedByClaimLoss: false });
     this.openTransport();
   }
 
@@ -231,7 +292,7 @@ export class CollaborationController {
 
   private send(message: ClientMessage) { this.transport.send(message); }
   private removePending(participantId: string) { const current = useCollaborationStore.getState(); const pending = { ...current.pending }; delete pending[participantId]; current.set({ pending }); }
-  dispose() { this.leave(); this.unsubscribeCommands(); }
+  dispose() { this.leave(); this.unsubscribeCommands(); this.unsubscribeBoardAccess(); }
 }
 
 function sessionStoreSnapshot() {
