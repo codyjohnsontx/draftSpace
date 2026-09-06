@@ -5,7 +5,7 @@ import { PROTOCOL_VERSION } from "@draftspace/collaboration-protocol";
 import { boardSchema } from "@/schemas/board-schema";
 import { parseBoardCommand, setLocalActorIdProvider, setLocalCommandAuthorizationProvider, type BoardCommandMetadata } from "@/core/commands/board-command";
 import { subscribeToBoardCommands, useBoardStore, type BoardCommandEvent } from "@/stores/board-store";
-import { useCollaborationStore } from "@/stores/collaboration-store";
+import { isHostingLiveRoom, useCollaborationStore } from "@/stores/collaboration-store";
 import { usePersistenceStore } from "@/stores/persistence-store";
 import { canEditBoard } from "@/hooks/use-can-edit-board";
 import { useViewportStore } from "@/stores/viewport-store";
@@ -49,8 +49,7 @@ export class CollaborationController {
     // rather than leaving them drawing into a board nothing will save.
     this.unsubscribeBoardAccess = usePersistenceStore.subscribe((state, previous) => {
       if (state.boardAccess === previous.boardAccess || state.boardAccess === "owner") return;
-      const collaboration = useCollaborationStore.getState();
-      if (collaboration.mode !== "host" || ["ended", "error"].includes(collaboration.status)) return;
+      if (!isHostingLiveRoom(useCollaborationStore.getState())) return;
       this.endRoom();
       useCollaborationStore.getState().set({ hostingEndedByClaimLoss: true });
     });

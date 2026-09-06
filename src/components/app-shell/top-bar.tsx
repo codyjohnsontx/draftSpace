@@ -11,7 +11,7 @@ import { InspectorModeControls } from "@/components/inspector/inspector-mode-con
 import { useUiPreferencesStore } from "@/stores/ui-preferences-store";
 import { ShareRoomDialog } from "@/components/collaboration/share-room-dialog";
 import { LiveRoomStatus } from "@/components/collaboration/live-room-status";
-import { useCollaborationStore } from "@/stores/collaboration-store";
+import { isHostingLiveRoom, useCollaborationStore } from "@/stores/collaboration-store";
 import { useCanEditBoard } from "@/hooks/use-can-edit-board";
 import { collaborationEnabled } from "@/features/collaboration/collaboration-enabled";
 
@@ -23,7 +23,7 @@ export function TopBar({ persistence }: { persistence?: PersistenceController })
   const [inspectorMenuOpen, setInspectorMenuOpen] = useState(false);
   const [shareOpen, setShareOpen] = useState(false); const collaborationMode = useCollaborationStore((state) => state.mode); const collaborationStatus = useCollaborationStore((state) => state.status); const collaborationSelf = useCollaborationStore((state) => state.self); const participantCount = useCollaborationStore((state) => Object.keys(state.participants).length + 1); const pendingCount = useCollaborationStore((state) => Object.keys(state.pending).length);
   const readOnly = !useCanEditBoard();
-  const hostingLiveRoom = collaborationMode === "host" && !["ended", "error"].includes(collaborationStatus);
+  const hostingLiveRoom = isHostingLiveRoom({ mode: collaborationMode, status: collaborationStatus });
   const actorId = collaborationSelf?.id ?? "local";
   const canUndo = history.undo.some((entry) => entry.metadata?.actorId === actorId);
   const canRedo = history.redo.some((entry) => entry.metadata?.actorId === actorId);
