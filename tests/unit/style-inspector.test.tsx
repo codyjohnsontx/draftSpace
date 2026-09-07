@@ -169,4 +169,35 @@ describe("StyleInspector", () => {
     expect(useBoardStore.getState().board?.elements[rectangle.id].opacity).toBe(.45);
     expect(useBoardStore.getState().history.undo).toHaveLength(1);
   });
+
+  /** The floating bar keeps the last four colours and the eyedropper behind the palette button. */
+  const openFillPalette = () => {
+    const { board, rectangle } = boardWithShapes();
+    useBoardStore.getState().setBoard(board);
+    useSessionStore.getState().setSelected([rectangle.id]);
+    render(<StyleInspector />);
+    const trigger = screen.getByLabelText("More fill colors");
+    fireEvent.click(trigger);
+    return { trigger, rectangle };
+  };
+
+  it("commits the color it was trying out when the palette closes the eyedropper away", () => {
+    const { rectangle } = openFillPalette();
+    fireEvent.input(screen.getByLabelText("Custom fill color"), { target: { value: "#123456" } });
+    expect(useSessionStore.getState().stylePreview?.patch.fillColor).toBe("#123456");
+
+    // A press outside closes the disclosure during pointerdown, so the input is gone before any blur.
+    fireEvent.pointerDown(document.body);
+    expect(screen.queryByLabelText("Custom fill color")).not.toBeInTheDocument();
+    expect(useSessionStore.getState().stylePreview).toBeNull();
+    expect(useBoardStore.getState().board?.elements[rectangle.id].fillColor).toBe("#123456");
+  });
+
+  it("hands focus back to the palette button when a color is picked from the disclosure", () => {
+    const { trigger, rectangle } = openFillPalette();
+    fireEvent.click(screen.getByLabelText("Set fill to Plum"));
+    expect(useBoardStore.getState().board?.elements[rectangle.id].fillColor).toBe("#7b5f86");
+    expect(screen.queryByRole("group", { name: "More fill colors" })).not.toBeInTheDocument();
+    expect(document.activeElement).toBe(trigger);
+  });
 });

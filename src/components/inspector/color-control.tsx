@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useId, useRef, useState, type CSSProperties, type KeyboardEvent, type ReactNode } from "react";
+import { useCallback, useEffect, useId, useRef, useState, type CSSProperties, type KeyboardEvent, type ReactNode } from "react";
 import { Ban, Palette, Pipette } from "lucide-react";
 import { CURATED_COLORS, overflowColors, quickColors, type PaletteSwatch, type SharedValue } from "@/features/inspector/style-values";
 
@@ -20,10 +20,17 @@ function ColorOverflow({ label, swatches, eyedropper, renderSwatch }: {
   renderSwatch: SwatchRenderer;
 }) {
   const [open, setOpen] = useState(false);
+  // Escape and a picked chip both take the pressed control away with them, so each asks for the
+  // focus back and the trigger takes it. A press outside asks for nothing: the focus belongs
+  // wherever that press put it.
+  const [focusRequests, setFocusRequests] = useState(0);
   const wrapRef = useRef<HTMLDivElement>(null);
   const triggerRef = useRef<HTMLButtonElement>(null);
   const popoverId = useId();
   const lowerLabel = label.toLowerCase();
+  const closeToTrigger = useCallback(() => { setOpen(false); setFocusRequests((requests) => requests + 1); }, []);
+
+  useEffect(() => { if (focusRequests) triggerRef.current?.focus(); }, [focusRequests]);
 
   useEffect(() => {
     if (!open) return;
@@ -40,8 +47,7 @@ function ColorOverflow({ label, swatches, eyedropper, renderSwatch }: {
       // The canvas takes Escape as "drop the selection", which would close the inspector out from
       // under the menu rather than closing the menu.
       event.stopPropagation();
-      setOpen(false);
-      triggerRef.current?.focus();
+      closeToTrigger();
     }}
   >
     <button
@@ -57,9 +63,45 @@ function ColorOverflow({ label, swatches, eyedropper, renderSwatch }: {
       <span className="color-popover-heading">{label}</span>
       {/* Closing on pick keeps the chip that just moved up into the row on show from reflowing
           the grid the pointer is still resting on. */}
-      <div className="color-row">{swatches.map((swatch) => renderSwatch(swatch, () => setOpen(false)))}{eyedropper}</div>
+      <div className="color-row">{swatches.map((swatch) => renderSwatch(swatch, closeToTrigger))}{eyedropper}</div>
     </div>}
   </div>;
+}
+
+/**
+ * The eyedropper, and the colour it is part-way through trying out. A compact control keeps it
+ * behind the palette disclosure, so closing that disclosure removes the input outright, and an
+ * input removed while it holds focus is not owed a blur - it commits the colour it was previewing
+ * itself rather than leaving the canvas painting one the board never receives.
+ */
+function Eyedropper({ label, value, onPreview, onCommit, onCancel }: {
+  label: string;
+  value: string;
+  onPreview: (color: string) => void;
+  onCommit: (color: string) => void;
+  onCancel: () => void;
+}) {
+  const previewed = useRef<string | null>(null);
+  const commit = useRef(onCommit);
+  useEffect(() => { commit.current = onCommit; });
+  useEffect(() => () => { if (previewed.current !== null) commit.current(previewed.current); }, []);
+  const settle = (color: string) => { previewed.current = null; onCommit(color); };
+
+  return <label className="custom-color">
+    <Pipette size={15} aria-hidden="true" />
+    <span className="sr-only">Custom {label} color</span>
+    <input
+      type="color"
+      aria-label={`Custom ${label} color`}
+      value={value}
+      onInput={(event) => { previewed.current = event.currentTarget.value; onPreview(event.currentTarget.value); }}
+      onBlur={(event) => settle(event.currentTarget.value)}
+      onKeyDown={(event: KeyboardEvent<HTMLInputElement>) => {
+        if (event.key === "Escape") { event.preventDefault(); previewed.current = null; onCancel(); event.currentTarget.blur(); }
+        if (event.key === "Enter") { settle(event.currentTarget.value); event.currentTarget.blur(); }
+      }}
+    />
+  </label>;
 }
 
 /**
@@ -85,10 +127,6 @@ export function ColorControl({ label, value, allowNone, recentColors, compact, o
   const customValue = typeof representative === "string" && /^#[0-9a-f]{6}$/i.test(representative) ? representative : "#b85f3f";
   const lowerLabel = label.toLowerCase();
 
-  const handleKeyDown = (event: KeyboardEvent<HTMLInputElement>) => {
-    if (event.key === "Escape") { event.preventDefault(); onCancel(); event.currentTarget.blur(); }
-    if (event.key === "Enter") { onCommit(event.currentTarget.value); event.currentTarget.blur(); }
-  };
   const swatch: SwatchRenderer = ({ name, value: color }, onPicked) => <button
     key={`${label}-${color}`}
     type="button"
@@ -100,11 +138,7 @@ export function ColorControl({ label, value, allowNone, recentColors, compact, o
   ><span /></button>;
 
   const noneSwatch = allowNone ? <button type="button" className="color-swatch none-swatch" aria-label="Remove fill" aria-pressed={selected === null} onClick={() => onSelect(null)}><Ban size={14} /></button> : null;
-  const eyedropper = <label className="custom-color">
-    <Pipette size={15} aria-hidden="true" />
-    <span className="sr-only">Custom {lowerLabel} color</span>
-    <input type="color" aria-label={`Custom ${lowerLabel} color`} value={customValue} onInput={(event) => onPreview(event.currentTarget.value)} onBlur={(event) => onCommit(event.currentTarget.value)} onKeyDown={handleKeyDown} />
-  </label>;
+  const eyedropper = <Eyedropper label={lowerLabel} value={customValue} onPreview={onPreview} onCommit={onCommit} onCancel={onCancel} />;
 
   if (!compact) return <fieldset className="inspector-group color-group">
     <legend>{label}{value.kind === "mixed" && <span className="mixed-value">Mixed</span>}</legend>
