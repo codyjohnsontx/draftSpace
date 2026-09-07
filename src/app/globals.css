@@ -211,7 +211,7 @@ button { color: inherit; }
 .inspector-header > div:first-child { display: grid; gap: 2px; min-width: 0; }
 .inspector-header strong { font-size: var(--text-sm); font-weight: var(--weight-medium); letter-spacing: -.015em; }
 .inspector-header span { color: var(--muted); font-size: var(--text-xs); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.style-inspector.floating > .inspector-header { flex: 0 0 auto; min-width: 152px; padding: var(--space-1) var(--space-3); border-right: 1px solid var(--line); border-bottom: 0; }
+.style-inspector.floating > .inspector-header { flex: 0 0 auto; min-width: 140px; padding: var(--space-1) var(--space-3); border-right: 1px solid var(--line); border-bottom: 0; }
 .inspector-mode-buttons { display: flex; align-items: center; gap: 1px; }
 .inspector-mode-button { display: grid; place-items: center; width: 30px; height: 30px; padding: 0; color: var(--muted); border: 0; border-radius: var(--radius-sm); background: transparent; cursor: pointer; }
 .inspector-mode-button:hover { color: var(--ink); background: var(--wash-strong); }
@@ -226,7 +226,7 @@ button { color: inherit; }
 .style-inspector.floating .inspector-controls { display: flex; flex-wrap: wrap; justify-content: center; align-items: stretch; row-gap: var(--space-2); min-width: 0; }
 .inspector-group { min-inline-size: 0; margin: 0; padding: var(--space-3) 0; border: 0; }
 .style-inspector.sidebar .inspector-group + .inspector-group { border-top: 1px solid var(--line); }
-.style-inspector.floating .inspector-group { flex: 0 0 auto; display: grid; align-content: center; padding: var(--space-1) var(--space-3); border-left: 1px solid var(--line); }
+.style-inspector.floating .inspector-group { flex: 0 0 auto; display: grid; align-content: center; padding: var(--space-1) var(--space-2); border-left: 1px solid var(--line); }
 .style-inspector.floating .inspector-group:first-child { border-left: 0; }
 /* Sentence case at the UI base size. These were 9px uppercase letter-spaced mono at three
    different weights - the single strongest dated signal in the file. */
@@ -265,7 +265,7 @@ button { color: inherit; }
 .line-styles button span { display: block; width: 21px; height: 2px; background: currentcolor; }
 .line-styles button span.dashed { background: repeating-linear-gradient(90deg, currentcolor 0 6px, transparent 6px 9px); }
 .line-styles button span.dotted { background: repeating-linear-gradient(90deg, currentcolor 0 2px, transparent 2px 5px); }
-.range-group { min-width: 140px; }
+.range-group { min-width: 120px; }
 /* Which ends of an edge carry a head, drawn as the edge itself: a bare line, one head, the other, or both. */
 .arrow-styles button { width: 38px; }
 .arrow-styles button svg { width: 21px; height: 16px; }

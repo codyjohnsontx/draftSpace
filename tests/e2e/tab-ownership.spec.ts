@@ -204,8 +204,11 @@ test("a second tab on the same board cannot overwrite the first tab's work", asy
 
   // The owner keeps working, and keeps all of it.
   await owner.bringToFront();
-  await drawRectangle(owner, 200, 500, 340, 600);
-  expect(await storedShapePositions(owner)).toEqual([{ x: 200, y: 200 }, { x: 200, y: 500 }]);
+  // The second rectangle goes in the top band for the same reason the first one does: drawing
+  // leaves the new shape selected, so the floating style bar is on screen over the lower half
+  // of the canvas, and a press that lands on it never reaches the board.
+  await drawRectangle(owner, 900, 200, 1040, 300);
+  expect(await storedShapePositions(owner)).toEqual([{ x: 200, y: 200 }, { x: 900, y: 200 }]);
   await expect(saveStatus(owner)).toHaveText("Saved locally");
 });
 
@@ -237,7 +240,10 @@ test("a promoted tab has the owner's latest work before it accepts an edit", asy
 
   // The owner draws again, so the reader's copy is now a shape behind the stored board.
   await owner.bringToFront();
-  await drawRectangle(owner, 200, 500, 340, 600);
+  // The second rectangle goes in the top band for the same reason the first one does: drawing
+  // leaves the new shape selected, so the floating style bar is on screen over the lower half
+  // of the canvas, and a press that lands on it never reaches the board.
+  await drawRectangle(owner, 900, 200, 1040, 300);
   await expect(canvas).toHaveAttribute("data-element-count", "1");
 
   await watchFirstEditableRender(reader);
@@ -262,7 +268,10 @@ test("a promoted tab that could not reload saves a copy rather than overwriting 
   // The owner draws past what the reader holds, then lets the board go while the reader cannot
   // read: the reader is promoted onto a stale document it had no way to refresh.
   await owner.bringToFront();
-  await drawRectangle(owner, 200, 500, 340, 600);
+  // The second rectangle goes in the top band for the same reason the first one does: drawing
+  // leaves the new shape selected, so the floating style bar is on screen over the lower half
+  // of the canvas, and a press that lands on it never reaches the board.
+  await drawRectangle(owner, 900, 200, 1040, 300);
   await failStorage(reader, { reads: true });
   await owner.close();
   await expect(saveStatus(reader)).toHaveText("Not saving");
@@ -276,7 +285,7 @@ test("a promoted tab that could not reload saves a copy rather than overwriting 
   const boards = await storedBoards(reader);
   const original = boards.find((board) => board.id === originalId);
   const copy = boards.find((board) => board.id !== originalId);
-  expect(original?.shapes).toEqual([{ x: 200, y: 200 }, { x: 200, y: 500 }]);
+  expect(original?.shapes).toEqual([{ x: 200, y: 200 }, { x: 900, y: 200 }]);
   expect(copy?.shapes).toEqual([{ x: 200, y: 200 }, { x: 700, y: 200 }]);
   expect(copy?.name).toBe(`${original?.name} (recovered copy)`);
   expect(await reader.evaluate(() => localStorage.getItem("draftspace:last-board"))).toBe(copy?.id);
