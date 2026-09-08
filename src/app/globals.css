@@ -64,11 +64,12 @@
   --z-tooltip: 50;
   --z-dialog: 100;
 
-  /* Radii: three steps for anything the pointer can touch. Circles and pills fall out of
-     these by clamping - a 24px box with an 18px radius is a circle, a 30px-tall pill is one
-     at 16px - so round controls need no step of their own. The fourth value is not a step:
-     15x12px artwork and a key cap have to stay square-ish to read as a card and a key, and
-     any control-scale radius rounds them into ellipses. */
+  /* Radii: four values, three of them a scale. The scale is 9 / 16 / 18, for anything the
+     pointer can touch; circles and pills fall out of it by clamping - a 24px box with an 18px
+     radius is a circle, a 30px-tall pill is one at 16px - so round controls need no step of
+     their own. The fourth value sits below the scale and is not a step in it: 15x12px artwork
+     and a key cap have to stay square-ish to read as a card and a key, and any control-scale
+     radius rounds them into ellipses, so those two call sites take 4px. */
   --radius-xs: 4px;   /* artwork below the control scale: the brand mark's cards, a key cap */
   --radius-sm: 9px;   /* controls: buttons, chips, fields */
   --radius-md: 16px;  /* panels: the bar, the rail, the inspector, popovers */
@@ -456,7 +457,16 @@ kbd { display: inline-grid; min-width: 22px; height: 22px; place-items: center; 
      (its `transform` and `backdrop-filter` each make it the containing block, so the popover
      lands above the bar's whole wrapped height, off the top of the window), and centring on the
      trigger just moves the overflow to the right-hand end. */
-  .color-popover .color-row { grid-template-columns: repeat(5, 28px); }
+  /* Its height is capped at the one row it has with no recent colours, because that is all the
+     room the wrapped bar leaves above the trigger: a second row is added at the TOP, where the
+     top bar is, so the colours in it would be painted over rather than reachable. The rest of
+     the grid scrolls into that row instead. The scrollbar is hidden because a classic one is
+     drawn inside the popover, and 196px of chips plus a 15px gutter no longer clears the window
+     at the widths above. */
+  .color-popover .color-row {
+    grid-template-columns: repeat(5, 28px); max-height: calc(28px + var(--space-1) * 2);
+    padding-block: var(--space-1); overflow-y: auto; scrollbar-width: none;
+  }
   .collaboration-backdrop { padding: calc(var(--space-6) * 2) var(--space-2) var(--space-2); }.share-room-dialog { width: 100%; max-height: calc(100svh - var(--space-6) * 3); }.invite-code-block { grid-template-columns: 1fr; }.invite-code-block > button { grid-column: 1; grid-row: 3; width: max-content; margin-top: var(--space-2); }.join-room-panel { padding: var(--space-4); }.join-room-panel footer { flex-direction: column; align-items: center; gap: var(--space-2); }
 }
 @media (prefers-reduced-motion: reduce) { *, *::before, *::after { scroll-behavior: auto !important; animation-duration: .01ms !important; animation-iteration-count: 1 !important; transition-duration: .01ms !important; } }

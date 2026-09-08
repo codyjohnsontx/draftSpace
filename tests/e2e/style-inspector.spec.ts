@@ -306,6 +306,86 @@ test("keeps every floating control on screen from a laptop down to a phone", asy
   }
 });
 
+/** Picks a colour the palette does not carry, through the disclosure's own input. */
+async function pickCustomColor(page: Page, label: string, hex: string) {
+  const input = page.getByLabel(label);
+  await input.focus();
+  await input.evaluate((element, value) => {
+    const picker = element as HTMLInputElement;
+    Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value")!.set!.call(picker, value);
+    picker.dispatchEvent(new Event("input", { bubbles: true }));
+  }, hex);
+  await page.evaluate(() => new Promise(requestAnimationFrame));
+  await input.blur();
+}
+
+test("reaches every colour once the phone disclosure has grown past one row", async ({ browserName, page }) => {
+  test.skip(browserName !== "chromium", "One engine is enough for a height budget.");
+  // The shortest viewport on which the bar itself still fits, so what is measured here is the
+  // disclosure's own height rather than the bar's.
+  const PHONE = { width: 375, height: 667 };
+  await page.setViewportSize(PHONE);
+  await page.goto("/");
+  await expect(page.getByRole("main", { name: "Draftspace infinite canvas" })).toBeVisible();
+  await page.keyboard.press("r");
+  await page.mouse.move(120, 200); await page.mouse.down(); await page.mouse.move(240, 290, { steps: 5 }); await page.mouse.up();
+  await expect(page.getByRole("toolbar", { name: "Style inspector" })).toBeVisible();
+
+  const disclose = page.getByRole("button", { name: "More fill colors" });
+  const popover = page.getByRole("group", { name: "More fill colors" });
+  await disclose.click();
+  // On a phone the eyedropper is only reachable through this disclosure, so a recent colour can
+  // only ever arrive this way. Six is the limit `updateRecentColors` keeps, and the sixth takes a
+  // slot on the bar as the colour the shape now carries, so what is left in here is the most the
+  // grid can ever hold: five curated colours, five recents and the eyedropper - eleven chips over
+  // three rows, where a fresh board's disclosure has one.
+  for (const hex of ["#123456", "#654321", "#abcdef", "#0f0f0f", "#112233", "#445566"]) {
+    await pickCustomColor(page, "Custom fill color", hex);
+  }
+
+  const grown = await popover.evaluate((panel) => {
+    const grid = panel.querySelector(".color-row")!;
+    return { chips: grid.children.length, scrolls: grid.scrollHeight > grid.clientHeight };
+  });
+  expect(grown.chips, "the worst case the grid can reach").toBe(11);
+
+  // A row is added at the TOP, because the disclosure hangs above its trigger, and the top bar is
+  // what is up there - so the window is not the only thing a grown row can be lost behind.
+  const box = (await popover.boundingBox())!;
+  const trigger = (await disclose.boundingBox())!;
+  expect(Math.round(box.y), "top edge").toBeGreaterThanOrEqual(0);
+  expect(Math.round(box.y + box.height), "bottom edge").toBeLessThanOrEqual(PHONE.height);
+  expect(Math.round(box.x), "left edge").toBeGreaterThanOrEqual(0);
+  expect(Math.round(box.x + box.width), "right edge").toBeLessThanOrEqual(PHONE.width);
+  expect(Math.round(box.x + box.width), "attached to its trigger")
+    .toBeCloseTo(Math.round(trigger.x + trigger.width), -1);
+
+  // Scrolled to, not merely present: each chip is brought into the grid's own scroll port and then
+  // asked whether a press at its centre would land on it, which is what the top bar takes away, and
+  // whether it is inside the disclosure at all - a row the grid spills instead of scrolling is
+  // hit-testable, but it is painted over the bar with no surface under it.
+  expect(await popover.evaluate((panel) => {
+    const surface = panel.getBoundingClientRect();
+    return [...panel.querySelector(".color-row")!.children]
+      .map((chip) => {
+        chip.scrollIntoView({ block: "nearest", inline: "nearest" });
+        const chipBox = chip.getBoundingClientRect();
+        const pressed = document.elementFromPoint(Math.round(chipBox.left + chipBox.width / 2), Math.round(chipBox.top + chipBox.height / 2));
+        const held = chipBox.top >= surface.top - 1 && chipBox.bottom <= surface.bottom + 1;
+        return { chip, ok: held && !!pressed && chip.contains(pressed) };
+      })
+      .filter(({ ok }) => !ok)
+      .map(({ chip }) => `${chip.getAttribute("aria-label") ?? chip.querySelector("input")?.getAttribute("aria-label")} at ${Math.round(chip.getBoundingClientRect().top)}`);
+  })).toEqual([]);
+
+  // And one of them pressed for real, from the second row, which only a scroll reaches: Playwright
+  // scrolls it into view itself and refuses to click what another element is painted over.
+  await popover.getByRole("button", { name: "Set fill to recent color #123456" }).click();
+  await expect.poll(async () => Object.values(await readStoredElements(page)).at(0)?.fillColor).toBe("#123456");
+  // Which took a scroll rather than a taller disclosure: the grid holds more than its port shows.
+  expect(grown.scrolls, "the grid is scrolled rather than grown").toBe(true);
+});
+
 test("handles mixed selections, rectangle-only corners, and recent custom colors", async ({ browserName, page }) => {
   test.skip(browserName !== "chromium", "Detailed mixed-selection coverage runs in Chromium.");
   await page.goto("/");
@@ -316,15 +396,7 @@ test("handles mixed selections, rectangle-only corners, and recent custom colors
   await page.mouse.move(430, 180); await page.mouse.down(); await page.mouse.move(590, 280); await page.mouse.up();
 
   await openPalette(page, browserName, "fill");
-  const customFill = page.getByLabel("Custom fill color");
-  await customFill.focus();
-  await customFill.evaluate((element) => {
-    const input = element as HTMLInputElement;
-    Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value")!.set!.call(input, "#123456");
-    input.dispatchEvent(new Event("input", { bubbles: true }));
-  });
-  await page.evaluate(() => new Promise(requestAnimationFrame));
-  await customFill.blur();
+  await pickCustomColor(page, "Custom fill color", "#123456");
   await page.keyboard.down("Shift"); await page.mouse.click(250, 230); await page.keyboard.up("Shift");
   await expect(page.getByText("2 mixed shapes")).toBeVisible();
   await expect(page.getByText("Mixed").first()).toBeVisible();
