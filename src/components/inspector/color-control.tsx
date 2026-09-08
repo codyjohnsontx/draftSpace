@@ -21,7 +21,10 @@ function ColorOverflow({ label, swatches, eyedropper, renderSwatch }: {
 }) {
   const [open, setOpen] = useState(false);
   const wrapRef = useRef<HTMLDivElement>(null);
-  const triggerRef = useRef<HTMLButtonElement>(null);
+  // The trigger is held in state rather than a ref because the chips are rendered by a function
+  // this component calls during render, and handing that call a closure that reads a ref is a ref
+  // read during render as far as the compiler lint can tell.
+  const [trigger, setTrigger] = useState<HTMLButtonElement | null>(null);
   const popoverRef = useRef<HTMLDivElement>(null);
   const gridRef = useRef<HTMLDivElement>(null);
   const [room, setRoom] = useState<number | null>(null);
@@ -32,7 +35,7 @@ function ColorOverflow({ label, swatches, eyedropper, renderSwatch }: {
   // Escape and a picked chip both take the pressed control away with them, so each hands the focus
   // back to the trigger, which outlives the disclosure. A press outside hands back nothing: the
   // focus belongs wherever that press put it.
-  const closeToTrigger = () => { setOpen(false); triggerRef.current?.focus(); };
+  const closeToTrigger = () => { setOpen(false); trigger?.focus(); };
 
   useEffect(() => {
     if (!open) return;
@@ -47,7 +50,7 @@ function ColorOverflow({ label, swatches, eyedropper, renderSwatch }: {
   // over. Measured off the trigger and off offsetHeight so the panel's opening transform cannot
   // skew it.
   useLayoutEffect(() => {
-    const popover = popoverRef.current, grid = gridRef.current, trigger = triggerRef.current;
+    const popover = popoverRef.current, grid = gridRef.current;
     if (!open || !popover || !grid || !trigger) return;
     const fit = () => {
       const gap = parseFloat(getComputedStyle(document.documentElement).getPropertyValue("--space-2")) || 0;
@@ -58,7 +61,7 @@ function ColorOverflow({ label, swatches, eyedropper, renderSwatch }: {
     fit();
     window.addEventListener("resize", fit);
     return () => window.removeEventListener("resize", fit);
-  }, [open, swatches.length]);
+  }, [open, trigger, swatches.length]);
 
   // Whether that room was enough, re-read after the clamp lands and on every scroll: an edge that
   // still says "there is more" once the user has reached the end is the same lie the other way up.
@@ -86,7 +89,7 @@ function ColorOverflow({ label, swatches, eyedropper, renderSwatch }: {
     }}
   >
     <button
-      ref={triggerRef}
+      ref={setTrigger}
       type="button"
       className="color-more"
       aria-label={`More ${lowerLabel} colors`}
