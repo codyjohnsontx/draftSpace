@@ -2,7 +2,7 @@
 
 import { useEffect, useId, useLayoutEffect, useRef, useState, type CSSProperties, type KeyboardEvent, type ReactNode } from "react";
 import { Ban, Palette, Pipette } from "lucide-react";
-import { CURATED_COLORS, overflowColors, quickColors, type PaletteSwatch, type SharedValue } from "@/features/inspector/style-values";
+import { CURATED_COLORS, overflowColors, quickColors, swatchName, type PaletteSwatch, type SharedValue } from "@/features/inspector/style-values";
 
 type ColorValue = SharedValue<string | null>;
 /** The second argument is what the disclosure wants done once a chip in it has been picked. */
@@ -192,7 +192,7 @@ export function ColorControl({ label, value, allowNone, recentColors, compact, o
       {noneSwatch}
       {CURATED_COLORS.map(({ name, value: color }) => swatch({ name, value: color }))}
       {recentColors.length > 0 && <span className="color-divider" aria-hidden="true" />}
-      {recentColors.map((color) => swatch({ name: `recent color ${color}`, value: color }))}
+      {recentColors.map((color) => swatch({ name: swatchName(color, "recent"), value: color }))}
       {eyedropper}
     </div>
   </fieldset>;

@@ -28,7 +28,7 @@ export function normalizeHexColor(value: string): string | null {
 
 export type PaletteSwatch = { name: string; value: string };
 
-const swatchName = (color: string, kind: "recent" | "custom") =>
+export const swatchName = (color: string, kind: "recent" | "custom") =>
   CURATED_COLORS.find(({ value }) => value.toLowerCase() === color.toLowerCase())?.name ?? `${kind} color ${color.toLowerCase()}`;
 
 /**

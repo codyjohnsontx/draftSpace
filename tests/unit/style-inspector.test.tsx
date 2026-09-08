@@ -211,6 +211,16 @@ describe("StyleInspector", () => {
     expect(screen.queryByRole("button", { name: "Set fill to custom color #123456" })).not.toBeInTheDocument();
   });
 
+  it("names a recent chip in the sidebar exactly as the disclosure does", () => {
+    const { board, rectangle } = boardWithShapes();
+    useBoardStore.getState().setBoard(board);
+    useSessionStore.getState().setSelected([rectangle.id]);
+    useUiPreferencesStore.setState({ inspector: { ...DEFAULT_INSPECTOR_PREFERENCES, mode: "sidebar", lastVisibleMode: "sidebar", recentColors: ["#123456"] } });
+    render(<StyleInspector />);
+    expect(screen.getByRole("button", { name: "Set fill to recent color #123456" })).toBeVisible();
+    expect(screen.getByRole("button", { name: "Set stroke to recent color #123456" })).toBeVisible();
+  });
+
   it("hands focus back to the palette button when a color is picked from the disclosure", () => {
     const { trigger, rectangle } = openFillPalette();
     fireEvent.click(screen.getByLabelText("Set fill to Plum"));
