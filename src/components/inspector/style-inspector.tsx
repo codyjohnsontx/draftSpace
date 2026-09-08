@@ -67,6 +67,8 @@ export function StyleInspector() {
     useUiPreferencesStore.getState().setInspectorMode(mode);
   }, [finishPreview]);
 
+  // Only the floating bar is short of room; docked in the sidebar every colour stays on show.
+  const compact = preferences.mode === "floating";
   const holding = selected.length + selectedConnectors.length;
   if (!hydrated || readOnly || preferences.mode === "hidden" || (preferences.mode === "floating" && !holding)) return null;
 
@@ -92,10 +94,10 @@ export function StyleInspector() {
       <div><strong>Style</strong><span>{selectionLabel(selected, selectedConnectors)}</span></div>
       <InspectorModeControls mode={preferences.mode} onSelect={selectMode} />
     </div>
-    {selectedConnectors.length ? <ConnectorControls connectors={displayedConnectors} recentColors={recentColors} />
+    {selectedConnectors.length ? <ConnectorControls connectors={displayedConnectors} recentColors={recentColors} compact={compact} />
       : !selected.length ? <div className="inspector-empty"><strong>Select a shape or a connector</strong><p>Select a shape or a connector to edit its style.</p></div> : <div className="inspector-controls">
-      <ColorControl label="Fill" value={fill} allowNone recentColors={recentColors} onSelect={(color) => applyStyle({ fillColor: color }, color ?? undefined)} onPreview={(color) => previewStyle({ fillColor: color })} onCommit={(color) => finishPreview(color)} onCancel={cancelPreview} />
-      <ColorControl label="Stroke" value={stroke} recentColors={recentColors} onSelect={(color) => color && applyStyle({ strokeColor: color }, color)} onPreview={(color) => previewStyle({ strokeColor: color })} onCommit={(color) => finishPreview(color)} onCancel={cancelPreview} />
+      <ColorControl label="Fill" value={fill} allowNone recentColors={recentColors} compact={compact} onSelect={(color) => applyStyle({ fillColor: color }, color ?? undefined)} onPreview={(color) => previewStyle({ fillColor: color })} onCommit={(color) => finishPreview(color)} onCancel={cancelPreview} />
+      <ColorControl label="Stroke" value={stroke} recentColors={recentColors} compact={compact} onSelect={(color) => color && applyStyle({ strokeColor: color }, color)} onPreview={(color) => previewStyle({ strokeColor: color })} onCommit={(color) => finishPreview(color)} onCancel={cancelPreview} />
       <fieldset className="inspector-group compact-group"><legend>Width{strokeWidth.kind === "mixed" && <span className="mixed-value">Mixed</span>}</legend><div className="segmented-control">
         {[1, 2, 4, 8].map((width) => <button key={width} type="button" aria-label={`Set stroke width to ${width}`} aria-pressed={strokeWidth.kind === "value" && strokeWidth.value === width} onClick={() => applyStyle({ strokeWidth: width })}>{width}</button>)}
       </div></fieldset>

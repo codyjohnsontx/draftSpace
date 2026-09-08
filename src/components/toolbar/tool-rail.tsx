@@ -20,7 +20,7 @@ export function ToolRail() {
   const readOnly = !useCanEditBoard();
   return <nav className="tool-rail" aria-label="Drawing tools">{tools.map(({ id, label, description, key, icon: Icon }, index) => {
     return <Fragment key={id}>{index === 2 && <span className="divider vertical" />}<Tooltip label={label} description={description} shortcut={key}>{(tooltipId) =>
-      <button type="button" className={active === id ? "tool active" : "tool"} aria-label={label} aria-pressed={active === id} aria-describedby={tooltipId} disabled={readOnly && id !== "select" && id !== "hand"} onClick={() => setTool(id)}><Icon size={19} /><span>{key}</span><b className="sr-only">{label}</b></button>}
+      <button type="button" className={active === id ? "tool active" : "tool"} aria-label={label} aria-pressed={active === id} aria-describedby={tooltipId} disabled={readOnly && id !== "select" && id !== "hand"} onClick={() => setTool(id)}><Icon size={19} /><b className="sr-only">{label}</b></button>}
     </Tooltip></Fragment>;
   })}
     <span className="divider vertical" />

@@ -4,7 +4,26 @@
 html.landing-scroll { height: auto; overflow-x: hidden; overflow-y: auto; }
 html.landing-scroll body { height: auto; overflow: visible; }
 
-.landing-root { position: relative; background: var(--canvas); color: var(--ink); }
+/* The three tokens the landing page does not share with the app shell. Each was moved for the
+   shell's sake and none survives the trip: `--elevation-1`'s inset white highlight is the lit
+   top edge of translucent chrome, and on a saturated terracotta button it reads as a hard white
+   line across the top; `--surface` was thinned to .88 so the shell's backdrop blur reads
+   through it, which over the moving WebGL scene behind this page turns two solid buttons
+   see-through; and `--muted` became an alpha on the ink ramp, which over this page's copy halo
+   is a different thing than it is on the shell's opaque paper - the halo fades to nothing at the
+   ends of a line, so 34% transparency in the glyphs lets the moving scene tint the body copy.
+   `--surface` and `--muted` are restated at the values the page shipped with. `--shadow` keeps
+   the page's own geometry and alphas but drops the inset, and is drawn on `--ink-rgb` like every
+   other shadow in the app - joining the one neutral ramp is the point of this stage, and the
+   tint moves by eight points at a tenth of an alpha. `--line` is deliberately NOT restated: it
+   is a hairline at .12 alpha and the shift from the page's old `rgba(52, 48, 43, .13)` is
+   imperceptible, so it joins the ramp rather than earning a fourth override. */
+.landing-root {
+  --shadow: 0 8px 28px rgb(var(--ink-rgb) / .1), 0 1px 3px rgb(var(--ink-rgb) / .12);
+  --surface: rgb(255 253 248 / .94);
+  --muted: #716c64;
+  position: relative; background: var(--canvas); color: var(--ink);
+}
 .landing-canvas { position: fixed; inset: 0; z-index: 0; width: 100%; height: 100%; display: block; }
 .landing-root[data-landing-ready="fallback"] .landing-canvas { display: none; }
 .landing-root[data-landing-ready="fallback"] {

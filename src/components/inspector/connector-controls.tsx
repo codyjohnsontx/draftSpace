@@ -42,7 +42,7 @@ export const CONNECTOR_ARROWS: ReadonlyArray<{ arrows: ConnectorArrows; name: st
  * fill and no box, so it is a different set of controls rather than the element
  * ones with most of them hidden.
  */
-export function ConnectorControls({ connectors, recentColors }: { connectors: readonly Connector[]; recentColors: readonly string[] }) {
+export function ConnectorControls({ connectors, recentColors, compact }: { connectors: readonly Connector[]; recentColors: readonly string[]; compact?: boolean }) {
   const ids = useMemo(() => connectors.map((connector) => connector.id), [connectors]);
   const stroke = sharedValue(connectors, (connector) => connector.strokeColor);
   const strokeWidth = sharedValue(connectors, (connector) => connector.strokeWidth);
@@ -82,7 +82,7 @@ export function ConnectorControls({ connectors, recentColors }: { connectors: re
   }, [sole]);
 
   return <div className="inspector-controls">
-    <ColorControl label="Stroke" value={stroke} recentColors={recentColors} onSelect={(color) => color && applyStyle({ strokeColor: color }, color)} onPreview={(color) => previewStyle({ strokeColor: color })} onCommit={(color) => finishPreview(color)} onCancel={cancelPreview} />
+    <ColorControl label="Stroke" value={stroke} recentColors={recentColors} compact={compact} onSelect={(color) => color && applyStyle({ strokeColor: color }, color)} onPreview={(color) => previewStyle({ strokeColor: color })} onCommit={(color) => finishPreview(color)} onCancel={cancelPreview} />
     <fieldset className="inspector-group compact-group"><legend>Width{strokeWidth.kind === "mixed" && <span className="mixed-value">Mixed</span>}</legend><div className="segmented-control">
       {[1, 2, 4, 8].map((width) => <button key={width} type="button" aria-label={`Set connector width to ${width}`} aria-pressed={strokeWidth.kind === "value" && strokeWidth.value === width} onClick={() => applyStyle({ strokeWidth: width })}>{width}</button>)}
     </div></fieldset>
