@@ -8,12 +8,6 @@ type ColorValue = SharedValue<string | null>;
 /** The second argument is what the disclosure wants done once a chip in it has been picked. */
 type SwatchRenderer = (swatch: PaletteSwatch, onPicked?: () => void) => ReactNode;
 
-/** Which edges of the grid still have chips behind them, named so the disclosure can say so. */
-function clippedEdges(grid: HTMLElement) {
-  return [grid.scrollTop > 1 && "above", grid.scrollTop + grid.clientHeight < grid.scrollHeight - 1 && "below"]
-    .filter(Boolean).join(" ");
-}
-
 /**
  * The rest of the palette, one press away. It is its own component so that a control which
  * stops being compact unmounts it: coming back to the floating bar then finds the disclosure
@@ -31,7 +25,8 @@ function ColorOverflow({ label, swatches, eyedropper, renderSwatch }: {
   const popoverRef = useRef<HTMLDivElement>(null);
   const gridRef = useRef<HTMLDivElement>(null);
   const [room, setRoom] = useState<number | null>(null);
-  const [clipped, setClipped] = useState("");
+  const [above, setAbove] = useState(false);
+  const [below, setBelow] = useState(false);
   const popoverId = useId();
   const lowerLabel = label.toLowerCase();
   // Escape and a picked chip both take the pressed control away with them, so each hands the focus
@@ -70,7 +65,10 @@ function ColorOverflow({ label, swatches, eyedropper, renderSwatch }: {
   useLayoutEffect(() => {
     const grid = gridRef.current;
     if (!open || !grid) return;
-    const track = () => setClipped(clippedEdges(grid));
+    const track = () => {
+      setAbove(grid.scrollTop > 1);
+      setBelow(grid.scrollTop + grid.clientHeight < grid.scrollHeight - 1);
+    };
     track();
     grid.addEventListener("scroll", track);
     return () => grid.removeEventListener("scroll", track);
@@ -108,9 +106,9 @@ function ColorOverflow({ label, swatches, eyedropper, renderSwatch }: {
       {/* Closing on pick keeps the chip that just moved up into the row on show from reflowing
           the grid the pointer is still resting on. */}
       <div className="color-row" ref={gridRef}>{swatches.map((swatch) => renderSwatch(swatch, closeToTrigger))}{eyedropper}</div>
-      {clipped !== "" && <span className="color-popover-marks" aria-hidden="true">
-        {["above", "below"].filter((edge) => clipped.includes(edge)).map((edge) =>
-          <span key={edge} className="color-popover-more" data-edge={edge} />)}
+      {(above || below) && <span className="color-popover-marks" aria-hidden="true">
+        {above && <span className="color-popover-more" data-edge="above" />}
+        {below && <span className="color-popover-more" data-edge="below" />}
       </span>}
     </div>}
   </div>;
