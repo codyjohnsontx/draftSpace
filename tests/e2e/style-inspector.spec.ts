@@ -206,22 +206,64 @@ test("fits every floating control inside the bar at a laptop width", async ({ br
 
 test("keeps every floating control on screen from a laptop down to a phone", async ({ browserName, page }) => {
   test.skip(browserName !== "chromium", "One engine is enough for a width budget.");
-  await page.setViewportSize({ width: 1440, height: 900 });
+  const AUTHORING = { width: 1280, height: 800 };
+  await page.setViewportSize(AUTHORING);
   await page.goto("/");
   await expect(page.getByRole("main", { name: "Draftspace infinite canvas" })).toBeVisible();
-  await page.keyboard.press("r");
-  await page.mouse.move(120, 200); await page.mouse.down(); await page.mouse.move(260, 300); await page.mouse.up();
-  const bar = page.getByRole("toolbar", { name: "Style inspector" });
-  await expect(bar).toBeVisible();
 
-  for (const width of [1440, 1366, 1280, 1024, 375]) {
-    await page.setViewportSize({ width, height: 720 });
-    await expect.poll(async () => (await bar.boundingBox())!.width).toBeLessThanOrEqual(width);
-    expect(await escapingControls(bar), `at ${width}px`).toEqual([]);
+  await page.keyboard.press("r");
+  await page.mouse.move(150, 180); await page.mouse.down(); await page.mouse.move(280, 260, { steps: 5 }); await page.mouse.up();
+  await page.keyboard.press("r");
+  await page.mouse.move(480, 180); await page.mouse.down(); await page.mouse.move(610, 260, { steps: 5 }); await page.mouse.up();
+  await page.keyboard.press("r");
+  await page.mouse.move(150, 380); await page.mouse.down(); await page.mouse.move(280, 460, { steps: 5 }); await page.mouse.up();
+  await page.keyboard.press("e");
+  await page.mouse.move(480, 380); await page.mouse.down(); await page.mouse.move(610, 460, { steps: 5 }); await page.mouse.up();
+  await page.keyboard.press("c");
+  await page.mouse.move(280, 220); await page.mouse.down(); await page.mouse.move(480, 220, { steps: 10 }); await page.mouse.up();
+  await page.keyboard.press("c");
+  await page.mouse.move(280, 420); await page.mouse.down(); await page.mouse.move(480, 420, { steps: 10 }); await page.mouse.up();
+  await expect.poll(async () => (await readStoredConnectors(page)).length).toBe(2);
+  await page.keyboard.press("v");
+
+  const bar = page.getByRole("toolbar", { name: "Style inspector" });
+  // The header sizes itself from this label, and the label is what picks the control set, so the
+  // widest bar is not the widest shape - it is whichever of these draws the widest group. Every
+  // branch of `selectionLabel` gets measured rather than the one a shape happens to take.
+  const selections: { label: string; select: () => Promise<void> }[] = [
+    { label: "Rectangle", select: async () => { await page.mouse.click(215, 220); } },
+    { label: "Ellipse", select: async () => { await page.mouse.click(545, 420); } },
+    { label: "2 mixed shapes", select: async () => {
+      await page.mouse.click(215, 220);
+      await page.keyboard.down("Shift"); await page.mouse.click(545, 420); await page.keyboard.up("Shift");
+    } },
+    { label: "Connector", select: async () => { await page.mouse.click(380, 220); } },
+    { label: "2 connectors", select: async () => {
+      await page.mouse.click(380, 220);
+      await page.keyboard.down("Shift"); await page.mouse.click(380, 420); await page.keyboard.up("Shift");
+    } },
+  ];
+
+  for (const { label, select } of selections) {
+    await page.setViewportSize(AUTHORING);
+    await page.keyboard.press("Escape");
+    await select();
+    await expect(bar).toBeVisible();
+    await expect(bar.getByText(label, { exact: true })).toBeVisible();
+
+    for (const width of [1440, 1366, 1280, 1024, 375, 360]) {
+      await page.setViewportSize({ width, height: 720 });
+      await expect.poll(async () => (await bar.boundingBox())!.width).toBeLessThanOrEqual(width);
+      expect(await escapingControls(bar), `${label} at ${width}px`).toEqual([]);
+    }
   }
 
   // The palette button is what makes the four colours behind it reachable at all, so a phone
   // losing it off the right-hand edge loses everything behind it, not just the button.
+  await page.setViewportSize(AUTHORING);
+  await page.keyboard.press("Escape");
+  await page.mouse.click(215, 220);
+  await page.setViewportSize({ width: 375, height: 720 });
   const trigger = page.getByRole("button", { name: "More fill colors" });
   const triggerBox = (await trigger.boundingBox())!;
   expect(triggerBox.x).toBeGreaterThanOrEqual(0);
