@@ -197,7 +197,7 @@ export function ColorControl({ label, value, allowNone, recentColors, compact, o
     </div>
   </fieldset>;
 
-  const quick = quickColors(representative);
+  const quick = quickColors(representative, recentColors);
 
   return <fieldset className="inspector-group color-group">
     <legend>{label}{value.kind === "mixed" && <span className="mixed-value">Mixed</span>}</legend>

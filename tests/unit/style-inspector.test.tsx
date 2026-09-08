@@ -193,6 +193,24 @@ describe("StyleInspector", () => {
     expect(useBoardStore.getState().board?.elements[rectangle.id].fillColor).toBe("#123456");
   });
 
+  // A fresh profile and a guest joining a shared room both open with no recent colours at all, so
+  // the chip the quick row swaps in for the selection's own colour is the one place the bar can
+  // call a colour recent that nothing has recently used.
+  it("calls the selection's own color recent only while it is", () => {
+    const { board, rectangle } = boardWithShapes();
+    board.elements[rectangle.id] = { ...rectangle, fillColor: "#123456" };
+    useBoardStore.getState().setBoard(board);
+    useSessionStore.getState().setSelected([rectangle.id]);
+    const view = render(<StyleInspector />);
+    expect(screen.getByRole("button", { name: "Set fill to custom color #123456" })).toBeVisible();
+    expect(screen.queryByRole("button", { name: "Set fill to recent color #123456" })).not.toBeInTheDocument();
+
+    useUiPreferencesStore.setState({ inspector: { ...DEFAULT_INSPECTOR_PREFERENCES, recentColors: ["#123456"] } });
+    view.rerender(<StyleInspector />);
+    expect(screen.getByRole("button", { name: "Set fill to recent color #123456" })).toBeVisible();
+    expect(screen.queryByRole("button", { name: "Set fill to custom color #123456" })).not.toBeInTheDocument();
+  });
+
   it("hands focus back to the palette button when a color is picked from the disclosure", () => {
     const { trigger, rectangle } = openFillPalette();
     fireEvent.click(screen.getByLabelText("Set fill to Plum"));

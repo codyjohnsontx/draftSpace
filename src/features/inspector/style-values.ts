@@ -28,8 +28,8 @@ export function normalizeHexColor(value: string): string | null {
 
 export type PaletteSwatch = { name: string; value: string };
 
-const swatchName = (color: string) =>
-  CURATED_COLORS.find(({ value }) => value.toLowerCase() === color.toLowerCase())?.name ?? `recent color ${color.toLowerCase()}`;
+const swatchName = (color: string, kind: "recent" | "custom") =>
+  CURATED_COLORS.find(({ value }) => value.toLowerCase() === color.toLowerCase())?.name ?? `${kind} color ${color.toLowerCase()}`;
 
 /**
  * The colours a compact control puts on show: the palette's first six, except that a colour
@@ -37,10 +37,11 @@ const swatchName = (color: string) =>
  * from the far end of the palette would show no pressed chip at all and the control could not
  * say what it was set to.
  */
-export function quickColors(current: string | null | undefined): PaletteSwatch[] {
+export function quickColors(current: string | null | undefined, recentColors: readonly string[]): PaletteSwatch[] {
   const quick: PaletteSwatch[] = CURATED_COLORS.slice(0, 6).map(({ name, value }) => ({ name, value }));
   if (!current || quick.some(({ value }) => value.toLowerCase() === current.toLowerCase())) return quick;
-  return [...quick.slice(0, -1), { name: swatchName(current), value: current }];
+  const recent = recentColors.some((color) => color.toLowerCase() === current.toLowerCase());
+  return [...quick.slice(0, -1), { name: swatchName(current, recent ? "recent" : "custom"), value: current }];
 }
 
 /**
@@ -51,7 +52,7 @@ export function overflowColors(quick: readonly PaletteSwatch[], recentColors: re
   const shown = new Set(quick.map(({ value }) => value.toLowerCase()));
   const rest: PaletteSwatch[] = [];
   for (const { name, value } of CURATED_COLORS) if (!shown.has(value.toLowerCase())) rest.push({ name, value });
-  for (const color of recentColors) if (!shown.has(color.toLowerCase())) rest.push({ name: swatchName(color), value: color });
+  for (const color of recentColors) if (!shown.has(color.toLowerCase())) rest.push({ name: swatchName(color, "recent"), value: color });
   return rest;
 }
 
