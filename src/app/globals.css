@@ -448,12 +448,15 @@ kbd { display: inline-grid; min-width: 22px; height: 22px; place-items: center; 
   .style-inspector.floating { left: 50%; bottom: calc(var(--above-rail) + var(--rail-height)); max-width: calc(100vw - var(--space-4)); }
   .inspector-mode-popover { position: fixed; top: calc(var(--space-2) + var(--bar-height)); right: var(--space-2); width: min(300px, calc(100vw - var(--space-4))); }
   .board-switcher-popover { position: fixed; top: calc(var(--space-2) + var(--bar-height)); left: var(--space-2); width: min(300px, calc(100vw - var(--space-4))); min-width: 0; }
-  /* Anchored to the bar rather than to the palette button. `right: 0` on a 28px trigger hangs
-     232px of popover to its left, and once the colour row wraps that trigger can start a row,
-     which put the disclosure ~21px past the left edge of the window - clipped away entirely by
-     `overflow: hidden` on the document. The bar's own transform is the containing block here,
-     and the bar is already clamped into the window, so aligning to its edge cannot leave it. */
-  .color-popover { position: fixed; left: var(--space-1); right: auto; bottom: calc(100% + var(--space-2)); width: min(232px, calc(100vw - var(--space-4))); }
+  /* The disclosure hangs to the left of a 28px trigger, so what keeps it on screen is its
+     width, not its anchor. Five columns make it 196px, and the trigger's right edge can never
+     be nearer the window than 209px (bar inset + the header's min-content + one chip), so it
+     cannot reach the near edge; anchoring to the trigger means it cannot reach the far one
+     either. Re-anchoring was tried twice and fails: `position: fixed` does not escape the bar
+     (its `transform` and `backdrop-filter` each make it the containing block, so the popover
+     lands above the bar's whole wrapped height, off the top of the window), and centring on the
+     trigger just moves the overflow to the right-hand end. */
+  .color-popover .color-row { grid-template-columns: repeat(5, 28px); }
   .collaboration-backdrop { padding: calc(var(--space-6) * 2) var(--space-2) var(--space-2); }.share-room-dialog { width: 100%; max-height: calc(100svh - var(--space-6) * 3); }.invite-code-block { grid-template-columns: 1fr; }.invite-code-block > button { grid-column: 1; grid-row: 3; width: max-content; margin-top: var(--space-2); }.join-room-panel { padding: var(--space-4); }.join-room-panel footer { flex-direction: column; align-items: center; gap: var(--space-2); }
 }
 @media (prefers-reduced-motion: reduce) { *, *::before, *::after { scroll-behavior: auto !important; animation-duration: .01ms !important; animation-iteration-count: 1 !important; transition-duration: .01ms !important; } }

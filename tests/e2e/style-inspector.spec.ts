@@ -271,22 +271,37 @@ test("keeps every floating control on screen from a laptop down to a phone", asy
   await trigger.click();
   await expect(page.getByRole("group", { name: "More fill colors" }).getByRole("button", { name: "Set fill to Plum" })).toBeVisible();
 
-  // The disclosure is the one thing on the bar allowed to leave it, so it is measured against the
-  // window instead. `toBeVisible()` cannot stand in for this: a popover the viewport has clipped
-  // away is still visible to the DOM. These widths are where the colour row wraps such that the
-  // trigger starts a row - 430px for Fill, 400px for Stroke - which is when a popover hung to the
-  // left of its own trigger runs off the near edge.
-  for (const { width, control, colour } of [
-    { width: 430, control: "fill", colour: "Set fill to Plum" },
-    { width: 400, control: "stroke", colour: "Set stroke to Plum" },
+  // The disclosure is the one thing on the bar allowed to leave the bar, so it is measured against
+  // the window on BOTH axes and against its own trigger. `toBeVisible()` cannot stand in for any of
+  // it: a popover the viewport has clipped away, or one opened at the far end of the bar from the
+  // button that opened it, is still visible to the DOM. The widths are where the colour row wraps
+  // so the trigger starts a row, which is when a popover hung to its left reaches the near edge;
+  // the tall-and-narrow pairs are where a popover placed against the bar rather than the trigger
+  // ends up above the top of the window.
+  for (const { width, height, control } of [
+    { width: 389, height: 780, control: "stroke" },
+    { width: 400, height: 780, control: "stroke" },
+    { width: 430, height: 780, control: "fill" },
+    { width: 452, height: 780, control: "fill" },
+    { width: 375, height: 720, control: "fill" },
+    { width: 375, height: 667, control: "fill" },
+    { width: 375, height: 667, control: "stroke" },
   ]) {
-    await page.setViewportSize({ width, height: 780 });
+    await page.setViewportSize({ width, height });
+    const where = `${control} popover at ${width}x${height}`;
     const disclose = page.getByRole("button", { name: `More ${control} colors` });
     await expect(disclose).toBeVisible();
-    if (await page.getByRole("group", { name: `More ${control} colors` }).count() === 0) await disclose.click();
-    const popover = (await page.getByRole("group", { name: `More ${control} colors` }).boundingBox())!;
-    expect(Math.round(popover.x), `${control} popover left at ${width}px`).toBeGreaterThanOrEqual(0);
-    expect(Math.round(popover.x + popover.width), `${control} popover right at ${width}px`).toBeLessThanOrEqual(width);
+    const opened = page.getByRole("group", { name: `More ${control} colors` });
+    if (await opened.count() === 0) await disclose.click();
+    const trigger = (await disclose.boundingBox())!;
+    const popover = (await opened.boundingBox())!;
+    expect(Math.round(popover.x), `${where}: left edge`).toBeGreaterThanOrEqual(0);
+    expect(Math.round(popover.x + popover.width), `${where}: right edge`).toBeLessThanOrEqual(width);
+    expect(Math.round(popover.y), `${where}: top edge`).toBeGreaterThanOrEqual(0);
+    expect(Math.round(popover.y + popover.height), `${where}: bottom edge`).toBeLessThanOrEqual(height);
+    // Attached to the button that opened it, not to the bar: the two share a right edge.
+    expect(Math.round(popover.x + popover.width), `${where}: attached to its trigger`)
+      .toBeCloseTo(Math.round(trigger.x + trigger.width), -1);
     await disclose.click();
   }
 });
