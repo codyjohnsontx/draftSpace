@@ -365,6 +365,33 @@ test("styles and names a selected connector", async ({ browserName, page }, test
   await expect(page.getByRole("button", { name: "Set connector width to 4" })).toHaveAttribute("aria-pressed", "true");
 });
 
+test("gives a docked edge's name the whole column", async ({ browserName, page }) => {
+  test.skip(browserName !== "chromium", "Detailed responsive layout coverage runs in Chromium.");
+  await page.goto("/");
+  await expect(page.getByRole("main", { name: "Draftspace infinite canvas" })).toBeVisible();
+  for (const left of [220, 560]) {
+    await page.keyboard.press("r");
+    await page.mouse.move(left, 200); await page.mouse.down(); await page.mouse.move(left + 140, 300, { steps: 5 }); await page.mouse.up();
+  }
+  await page.keyboard.press("c");
+  await page.mouse.move(360, 250); await page.mouse.down(); await page.mouse.move(630, 250, { steps: 10 }); await page.mouse.up();
+  await expect.poll(async () => (await readStoredConnectors(page)).length).toBe(1);
+  await page.keyboard.press("v");
+  await page.mouse.click(460, 250);
+
+  await page.getByRole("button", { name: "Inspector layout" }).click();
+  await page.getByRole("menuitemradio", { name: /Right sidebar/ }).click();
+  const docked = page.getByRole("complementary", { name: "Style inspector" });
+  await expect(docked).toBeVisible();
+
+  // The width the floating bar holds this field to is a concession to a bar 359px wide on a phone,
+  // and it must not follow the field into a panel that has room. Measured against the colour row
+  // beside it rather than a number, so a scrollbar or a padding change moves both together.
+  const column = (await docked.locator(".color-row").first().boundingBox())!;
+  const named = (await docked.getByRole("textbox", { name: "Connector label" }).boundingBox())!;
+  expect(Math.round(named.width)).toBe(Math.round(column.width));
+});
+
 /**
  * How much of the edge's own ink the canvas put down in a small window at one end
  * of the route, in device pixels. A head is drawn as a triangle back from the

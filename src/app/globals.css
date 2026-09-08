@@ -288,7 +288,7 @@ button { color: inherit; }
 .arrow-styles button svg .shaft { fill: none; stroke: currentcolor; stroke-width: 1.6; stroke-linecap: round; }
 .arrow-styles button svg .head { fill: currentcolor; stroke: none; }
 /* An edge's own name, written where the rest of its style is set - it has no box to put a caret in. */
-.text-group { inline-size: 160px; }
+.style-inspector.floating .text-group { inline-size: 160px; }
 .label-input {
   width: 100%; height: 32px; padding: 0 var(--space-2); color: var(--ink);
   border: 1px solid var(--line); border-radius: var(--radius-sm); background: var(--paper-raised); font-size: var(--text-sm);
