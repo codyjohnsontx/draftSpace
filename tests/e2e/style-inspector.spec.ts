@@ -21,6 +21,27 @@ async function openPalette(page: Page, browserName: string, control: "fill" | "s
   await pressButton(page, browserName, `More ${control} colors`);
 }
 
+/**
+ * Every control the floating bar is drawing that has left the bar, or the window - named and
+ * measured, so a failure says which one went and where. The bar wraps rather than scrolls, so a
+ * control it cannot fit costs it a row; a control that instead spills past its edge is either
+ * clipped away by `overflow: hidden` on the document or painted over the header beside it, and
+ * both are silent.
+ */
+async function escapingControls(bar: ReturnType<Page["locator"]>) {
+  return bar.locator(".inspector-controls").evaluate((controls) => {
+    const sheet = controls.closest(".style-inspector")!.getBoundingClientRect();
+    const describe = (control: Element) => control.getAttribute("aria-label") ?? control.tagName.toLowerCase();
+    return [...controls.querySelectorAll(".inspector-group, button, input")]
+      // A popover is meant to leave the bar - that is the point of opening above it.
+      .filter((control) => !control.closest(".color-popover"))
+      .map((control) => ({ name: describe(control), box: control.getBoundingClientRect() }))
+      .filter(({ box }) => box.width > 0 && box.height > 0)
+      .filter(({ box }) => box.left < sheet.left - 1 || box.right > sheet.right + 1 || box.left < 0 || box.right > window.innerWidth)
+      .map(({ name, box }) => `${name} at ${Math.round(box.left)}..${Math.round(box.right)} of bar ${Math.round(sheet.left)}..${Math.round(sheet.right)} in ${window.innerWidth}px`);
+  });
+}
+
 async function setRange(page: Page, name: string, value: number) {
   const slider = page.getByRole("slider", { name });
   await slider.evaluate((element, nextValue) => {
@@ -159,7 +180,7 @@ test("fits every floating control inside the bar at a laptop width", async ({ br
   await page.goto("/");
   await expect(page.getByRole("main", { name: "Draftspace infinite canvas" })).toBeVisible();
 
-  // A rectangle is the widest the bar ever gets: it is the only shape that adds a Corners group.
+  // A rectangle is the widest single shape: it is the only one that adds a Corners group.
   await page.keyboard.press("r");
   await page.mouse.move(250, 180); await page.mouse.down(); await page.mouse.move(450, 300); await page.mouse.up();
   const bar = page.getByRole("toolbar", { name: "Style inspector" });
@@ -167,11 +188,10 @@ test("fits every floating control inside the bar at a laptop width", async ({ br
 
   // Going over budget used to hide the controls at the right-hand end with no scrollbar, fade or
   // chevron to say so - 159px of them at this size - so the only way to catch it is to measure.
-  const controls = bar.locator(".inspector-controls");
-  expect(await controls.evaluate((element) => element.scrollWidth - element.clientWidth)).toBe(0);
-  const box = (await bar.boundingBox())!;
-  expect(box.x).toBeGreaterThanOrEqual(0);
-  expect(box.x + box.width).toBeLessThanOrEqual(1440);
+  // Measuring the bar's own box says nothing: `width: max-content` under a `max-width` keeps it
+  // on screen however far its contents run past it. What has to hold is that no control escapes
+  // the bar it is drawn on, or the window.
+  expect(await escapingControls(bar)).toEqual([]);
 
   // Six of the ten colours are on the bar and the other four are behind the palette button, so
   // the whole palette is still reachable - this is a disclosure, not a smaller set of colours.
@@ -182,6 +202,32 @@ test("fits every floating control inside the bar at a laptop width", async ({ br
   for (const name of ["Sage", "Teal", "Blue", "Plum"]) {
     await expect(disclosed.getByRole("button", { name: `Set fill to ${name}` })).toBeVisible();
   }
+});
+
+test("keeps every floating control on screen from a laptop down to a phone", async ({ browserName, page }) => {
+  test.skip(browserName !== "chromium", "One engine is enough for a width budget.");
+  await page.setViewportSize({ width: 1440, height: 900 });
+  await page.goto("/");
+  await expect(page.getByRole("main", { name: "Draftspace infinite canvas" })).toBeVisible();
+  await page.keyboard.press("r");
+  await page.mouse.move(120, 200); await page.mouse.down(); await page.mouse.move(260, 300); await page.mouse.up();
+  const bar = page.getByRole("toolbar", { name: "Style inspector" });
+  await expect(bar).toBeVisible();
+
+  for (const width of [1440, 1366, 1280, 1024, 375]) {
+    await page.setViewportSize({ width, height: 720 });
+    await expect.poll(async () => (await bar.boundingBox())!.width).toBeLessThanOrEqual(width);
+    expect(await escapingControls(bar), `at ${width}px`).toEqual([]);
+  }
+
+  // The palette button is what makes the four colours behind it reachable at all, so a phone
+  // losing it off the right-hand edge loses everything behind it, not just the button.
+  const trigger = page.getByRole("button", { name: "More fill colors" });
+  const triggerBox = (await trigger.boundingBox())!;
+  expect(triggerBox.x).toBeGreaterThanOrEqual(0);
+  expect(triggerBox.x + triggerBox.width).toBeLessThanOrEqual(375);
+  await trigger.click();
+  await expect(page.getByRole("group", { name: "More fill colors" }).getByRole("button", { name: "Set fill to Plum" })).toBeVisible();
 });
 
 test("handles mixed selections, rectangle-only corners, and recent custom colors", async ({ browserName, page }) => {

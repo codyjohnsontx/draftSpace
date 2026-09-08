@@ -240,7 +240,7 @@ button { color: inherit; }
    it stacks, so `border-top` between groups can never be stray. The padding stays at
    `--space-2` a side: it is what the measured 1440px fit was taken against, and dropping the
    rule can only make the bar narrower, never wider. */
-.style-inspector.floating .inspector-group { flex: 0 0 auto; display: grid; align-content: center; padding: var(--space-1) var(--space-2); border: 0; }
+.style-inspector.floating .inspector-group { display: grid; align-content: center; padding: var(--space-1) var(--space-2); border: 0; }
 /* Sentence case at the UI base size. These were 9px uppercase letter-spaced mono at three
    different weights - the single strongest dated signal in the file. */
 .inspector-group legend { display: flex; align-items: center; gap: var(--space-2); width: 100%; margin-bottom: var(--space-2); padding: 0; color: var(--muted); font-size: var(--text-sm); font-weight: var(--weight-medium); }
@@ -248,7 +248,6 @@ button { color: inherit; }
 .inspector-group legend small { color: var(--muted); font-size: var(--text-xs); font-weight: var(--weight-regular); }
 .mixed-value { display: inline-flex; align-items: center; min-height: 18px; padding: 0 var(--space-1); color: var(--accent-deep); background: var(--accent-soft); border-radius: var(--radius-sm); font-size: var(--text-xs); font-weight: var(--weight-medium); }
 .color-row { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-1); }
-.style-inspector.floating .color-row { flex-wrap: nowrap; }
 .color-swatch, .custom-color, .color-more { position: relative; display: grid; place-items: center; width: 28px; height: 28px; flex: 0 0 28px; padding: 0; border: 1px solid rgb(var(--ink-rgb) / .16); border-radius: var(--radius-sm); background: var(--paper-raised); cursor: pointer; }
 .color-swatch > span { width: 18px; height: 18px; border-radius: var(--radius-sm); background: var(--swatch-color); box-shadow: inset 0 0 0 1px rgb(var(--ink-rgb) / .08); }
 .color-swatch:hover, .custom-color:hover, .color-more:hover { border-color: rgb(var(--ink-rgb) / .34); transform: translateY(-1px); }

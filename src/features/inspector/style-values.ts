@@ -28,9 +28,6 @@ export function normalizeHexColor(value: string): string | null {
 
 export type PaletteSwatch = { name: string; value: string };
 
-/** How many colours a compact control shows before the rest are a press away. */
-export const QUICK_COLOR_COUNT = 6;
-
 const swatchName = (color: string) =>
   CURATED_COLORS.find(({ value }) => value.toLowerCase() === color.toLowerCase())?.name ?? `recent color ${color.toLowerCase()}`;
 
@@ -40,10 +37,10 @@ const swatchName = (color: string) =>
  * from the far end of the palette would show no pressed chip at all and the control could not
  * say what it was set to.
  */
-export function quickColors(current: string | null | undefined, limit = QUICK_COLOR_COUNT): PaletteSwatch[] {
-  const quick: PaletteSwatch[] = CURATED_COLORS.slice(0, limit).map(({ name, value }) => ({ name, value }));
+export function quickColors(current: string | null | undefined): PaletteSwatch[] {
+  const quick: PaletteSwatch[] = CURATED_COLORS.slice(0, 6).map(({ name, value }) => ({ name, value }));
   if (!current || quick.some(({ value }) => value.toLowerCase() === current.toLowerCase())) return quick;
-  return [...quick.slice(0, limit - 1), { name: swatchName(current), value: current }];
+  return [...quick.slice(0, -1), { name: swatchName(current), value: current }];
 }
 
 /**
