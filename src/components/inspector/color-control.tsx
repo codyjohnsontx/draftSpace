@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useId, useRef, useState, type CSSProperties, type KeyboardEvent, type ReactNode } from "react";
+import { useEffect, useId, useRef, useState, type CSSProperties, type KeyboardEvent, type ReactNode } from "react";
 import { Ban, Palette, Pipette } from "lucide-react";
 import { CURATED_COLORS, overflowColors, quickColors, type PaletteSwatch, type SharedValue } from "@/features/inspector/style-values";
 
@@ -20,17 +20,14 @@ function ColorOverflow({ label, swatches, eyedropper, renderSwatch }: {
   renderSwatch: SwatchRenderer;
 }) {
   const [open, setOpen] = useState(false);
-  // Escape and a picked chip both take the pressed control away with them, so each asks for the
-  // focus back and the trigger takes it. A press outside asks for nothing: the focus belongs
-  // wherever that press put it.
-  const [focusRequests, setFocusRequests] = useState(0);
   const wrapRef = useRef<HTMLDivElement>(null);
   const triggerRef = useRef<HTMLButtonElement>(null);
   const popoverId = useId();
   const lowerLabel = label.toLowerCase();
-  const closeToTrigger = useCallback(() => { setOpen(false); setFocusRequests((requests) => requests + 1); }, []);
-
-  useEffect(() => { if (focusRequests) triggerRef.current?.focus(); }, [focusRequests]);
+  // Escape and a picked chip both take the pressed control away with them, so each hands the focus
+  // back to the trigger, which outlives the disclosure. A press outside hands back nothing: the
+  // focus belongs wherever that press put it.
+  const closeToTrigger = () => { setOpen(false); triggerRef.current?.focus(); };
 
   useEffect(() => {
     if (!open) return;
