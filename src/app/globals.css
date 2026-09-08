@@ -11,7 +11,10 @@
      and could never be re-tuned together. */
   --ink-rgb: 41 39 36;
   --ink: rgb(var(--ink-rgb));
-  --muted: rgb(var(--ink-rgb) / .62);
+  /* .66, not a rounder number: it is the lowest alpha on this ramp that clears WCAG AA
+     against both grounds it is ever read on - 4.72:1 over --canvas, 4.86:1 over --surface.
+     The flat #716c64 this replaced measured 4.74:1, so the ramp costs no contrast. */
+  --muted: rgb(var(--ink-rgb) / .66);
   --line: rgb(var(--ink-rgb) / .12);
   --wash: rgb(var(--ink-rgb) / .06);
   --wash-strong: rgb(var(--ink-rgb) / .1);
@@ -49,7 +52,9 @@
   --elevation-1: 0 1px 2px rgb(var(--ink-rgb) / .06), 0 6px 18px rgb(var(--ink-rgb) / .07), inset 0 1px 0 rgb(255 255 255 / .7);
   --elevation-2: 0 2px 6px rgb(var(--ink-rgb) / .07), 0 16px 40px rgb(var(--ink-rgb) / .12), inset 0 1px 0 rgb(255 255 255 / .8);
   --elevation-3: 0 4px 12px rgb(var(--ink-rgb) / .1), 0 32px 80px rgb(var(--ink-rgb) / .2), inset 0 1px 0 rgb(255 255 255 / .85);
-  --shadow: var(--elevation-1);
+  /* The inset highlight is what makes these read as translucent paper, so they belong to the
+     app shell alone. The landing page's opaque, saturated buttons take a plain cast shadow
+     and keep it in `src/app/landing/landing.css`. */
 
   --z-overlay: 4;    /* presence drawn over the canvas */
   --z-chrome: 10;    /* the rail and the viewport controls */
@@ -226,8 +231,16 @@ button { color: inherit; }
 .style-inspector.floating .inspector-controls { display: flex; flex-wrap: wrap; justify-content: center; align-items: stretch; row-gap: var(--space-2); min-width: 0; }
 .inspector-group { min-inline-size: 0; margin: 0; padding: var(--space-3) 0; border: 0; }
 .style-inspector.sidebar .inspector-group + .inspector-group { border-top: 1px solid var(--line); }
-.style-inspector.floating .inspector-group { flex: 0 0 auto; display: grid; align-content: center; padding: var(--space-1) var(--space-2); border-left: 1px solid var(--line); }
-.style-inspector.floating .inspector-group:first-child { border-left: 0; }
+/* Spacing separates the groups here, not a rule. A `border-left` on every group but the
+   first draws a stray hairline at the head of any row after the first, and a wrapping,
+   centred flex row gives CSS no way to name the item that starts a row - the item is only
+   first in the container, never first in its row. Dropping the rule is also the same move
+   the surfaces made: border and shadow were doing one job, and the bar reads as one sheet
+   whose groups are spaced, not as boxes butted together. The sidebar keeps its rules -
+   it stacks, so `border-top` between groups can never be stray. The padding stays at
+   `--space-2` a side: it is what the measured 1440px fit was taken against, and dropping the
+   rule can only make the bar narrower, never wider. */
+.style-inspector.floating .inspector-group { flex: 0 0 auto; display: grid; align-content: center; padding: var(--space-1) var(--space-2); border: 0; }
 /* Sentence case at the UI base size. These were 9px uppercase letter-spaced mono at three
    different weights - the single strongest dated signal in the file. */
 .inspector-group legend { display: flex; align-items: center; gap: var(--space-2); width: 100%; margin-bottom: var(--space-2); padding: 0; color: var(--muted); font-size: var(--text-sm); font-weight: var(--weight-medium); }
