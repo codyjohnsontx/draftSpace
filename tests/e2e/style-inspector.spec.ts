@@ -319,71 +319,148 @@ async function pickCustomColor(page: Page, label: string, hex: string) {
   await input.blur();
 }
 
-test("reaches every colour once the phone disclosure has grown past one row", async ({ browserName, page }) => {
+/** The six a phone can reach only through the disclosure's own input, in the order it takes them. */
+const CUSTOM_COLORS = ["#123456", "#654321", "#abcdef", "#0f0f0f", "#112233", "#445566"];
+
+/** The edges the disclosure is claiming to have chips behind, in the order it drew them. */
+const affordanceEdges = (popover: ReturnType<Page["locator"]>) =>
+  popover.evaluate((panel) => [...panel.querySelectorAll(".color-popover-more")].map((edge) => edge.getAttribute("data-edge")));
+
+/** Puts the grid back where it opens, so what it is hiding is read from the top of its scroll. */
+const rewind = (popover: ReturnType<Page["locator"]>) =>
+  popover.evaluate((panel) => { (panel.querySelector(".color-row") as HTMLElement).scrollTop = 0; });
+
+/**
+ * What the disclosure is showing, measured rather than counted: its own box, the scroll port
+ * against the grid held inside it, and whether a press at each chip's centre would land on that
+ * chip once the grid has brought it into view. The top bar is what makes that last question
+ * different from mere presence - a row grown up behind it is in the DOM and answers
+ * `elementFromPoint` with the bar - and so is the popover's own surface, which a row the grid
+ * spills rather than scrolls is painted outside of.
+ */
+async function readDisclosure(popover: ReturnType<Page["locator"]>) {
+  return popover.evaluate((panel) => {
+    const grid = panel.querySelector(".color-row") as HTMLElement;
+    const surface = panel.getBoundingClientRect();
+    const reachable = (chip: Element) => {
+      chip.scrollIntoView({ block: "nearest", inline: "nearest" });
+      const box = chip.getBoundingClientRect();
+      const pressed = document.elementFromPoint(Math.round(box.left + box.width / 2), Math.round(box.top + box.height / 2));
+      return box.top >= surface.top - 1 && box.bottom <= surface.bottom + 1 && !!pressed && chip.contains(pressed);
+    };
+    const name = (chip: Element) => chip.getAttribute("aria-label") ?? chip.querySelector("input")?.getAttribute("aria-label") ?? chip.tagName;
+    const chips = [...grid.children];
+    return {
+      box: { left: Math.round(surface.left), right: Math.round(surface.right), top: Math.round(surface.top), bottom: Math.round(surface.bottom) },
+      chips: chips.length,
+      port: grid.clientHeight,
+      content: grid.scrollHeight,
+      unreachable: chips.filter((chip) => !reachable(chip)).map(name),
+      eyedropper: reachable(grid.querySelector(".custom-color")!),
+    };
+  });
+}
+
+// Five 28px chips, the 8px gutter between two of them and the port's own 4px above and below:
+// 36px buys a row, and every height below is stated in rows because that is what a user counts.
+const ROW = 36;
+
+// Two phones, because measuring the room rather than naming a row count is the fix, and the two get
+// different answers. On 375x667 - the shortest viewport whose bar still clears the top bar - the
+// palette button leaves 53px above it, against the 58px the panel's heading, padding and its gap
+// from the trigger want before a single chip, so one row is genuinely all that fits and the grid
+// scrolls inside it. On 390x844, a current phone, the whole grid stands above the trigger with
+// nothing to scroll at all. No constant says both, which is why the disclosure measures. They run a
+// context apart because recent colours outlive a reload, and six of them is where each one ends.
+for (const { width, height, rows } of [
+  { width: 375, height: 667, rows: { 0: 1, 1: 1, 6: 1 } },
+  { width: 390, height: 844, rows: { 0: 1, 1: 2, 6: 3 } },
+] as const) {
+  test(`fits the ${width}x${height} palette disclosure to the room genuinely above its trigger`, async ({ browserName, page }) => {
+    test.skip(browserName !== "chromium", "One engine is enough for a height budget.");
+    await page.setViewportSize({ width, height });
+    await page.goto("/");
+    await expect(page.getByRole("main", { name: "Draftspace infinite canvas" })).toBeVisible();
+    await page.keyboard.press("r");
+    await page.mouse.move(120, 150); await page.mouse.down(); await page.mouse.move(240, 240, { steps: 5 }); await page.mouse.up();
+    await expect(page.getByRole("toolbar", { name: "Style inspector" })).toBeVisible();
+
+    const disclose = page.getByRole("button", { name: "More fill colors" });
+    const popover = page.getByRole("group", { name: "More fill colors" });
+    await disclose.click();
+
+    // On a phone the eyedropper is only reachable through this disclosure, so a recent colour can
+    // only ever arrive this way - and the colour picked is also the fill the shape now carries, so
+    // it takes a slot on the bar and leaves the disclosure. Six is the limit `updateRecentColors`
+    // keeps, which makes five recents, five curated colours and the eyedropper - eleven chips over
+    // three rows - the most this grid can ever hold, against the five a fresh board's holds.
+    let picked = 0;
+    for (const recents of [0, 1, 6] as const) {
+      while (picked < recents) await pickCustomColor(page, "Custom fill color", CUSTOM_COLORS[picked++]);
+      const where = `${width}x${height} with ${recents} recent colours`;
+      const shown = await readDisclosure(popover);
+      const trigger = (await disclose.boundingBox())!;
+
+      expect(shown.chips, `${where}: chips in the grid`).toBe(recents === 0 ? 5 : recents + 5);
+      expect(shown.port, `${where}: rows on show`).toBe(rows[recents] * ROW);
+      expect(shown.content, `${where}: rows held`).toBe(Math.ceil(shown.chips / 5) * ROW);
+
+      // Inside the window on both axes, and still hung off the button that opened it.
+      expect(shown.box.top, `${where}: top edge`).toBeGreaterThanOrEqual(0);
+      expect(shown.box.bottom, `${where}: bottom edge`).toBeLessThanOrEqual(height);
+      expect(shown.box.left, `${where}: left edge`).toBeGreaterThanOrEqual(0);
+      expect(shown.box.right, `${where}: right edge`).toBeLessThanOrEqual(width);
+      expect(shown.box.right, `${where}: attached to its trigger`).toBeCloseTo(Math.round(trigger.x + trigger.width), -1);
+
+      // The eyedropper first and on its own, because it is emitted last: it is the chip a grid that
+      // cannot reach its far end costs before any other, and on a phone it is the only way to a
+      // colour the palette does not carry. Then every chip, pressable where the grid puts it.
+      expect(shown.eyedropper, `${where}: the eyedropper reachable`).toBe(true);
+      expect(shown.unreachable, `${where}: every chip reachable`).toEqual([]);
+
+      // And the panel says so when it is keeping chips back, and says nothing when it is not - a
+      // port exactly one row tall with a hidden scrollbar is otherwise a palette with the
+      // eyedropper missing from it.
+      await rewind(popover);
+      await expect.poll(() => affordanceEdges(popover), { message: `${where}: what the panel says it is hiding` })
+        .toEqual(shown.content > shown.port ? ["below"] : []);
+    }
+
+    // Which way round it is hiding them, too: an edge still reading "more below" once the user has
+    // scrolled to the end is the same lie the other way up.
+    const scrolled = await popover.evaluate((panel) => {
+      const grid = panel.querySelector(".color-row") as HTMLElement;
+      grid.scrollTop = grid.scrollHeight;
+      return grid.scrollTop > 0;
+    });
+    await expect.poll(() => affordanceEdges(popover), { message: `${width}x${height}: scrolled to the end` })
+      .toEqual(scrolled ? ["above"] : []);
+
+    // And one chip pressed for real from the far end of the grid, which is what a scrolled port has
+    // to survive: Playwright brings it into view itself and refuses to click what is painted over.
+    await popover.getByRole("button", { name: "Set fill to recent color #123456" }).click();
+    await expect.poll(async () => Object.values(await readStoredElements(page)).at(0)?.fillColor).toBe("#123456");
+  });
+}
+
+test("leaves the landscape phone's disclosure to the bar's own vertical budget", async ({ browserName, page }) => {
   test.skip(browserName !== "chromium", "One engine is enough for a height budget.");
-  // The shortest viewport on which the bar itself still fits, so what is measured here is the
-  // disclosure's own height rather than the bar's.
-  const PHONE = { width: 375, height: 667 };
-  await page.setViewportSize(PHONE);
+  // 640x360 - any phone turned on its side - is the one viewport the matrix above cannot speak for.
+  // The bar wraps to 231px and starts at y=10, so the palette button is itself under the fixed top
+  // bar and there is nothing to open from it. That is the bar's own vertical budget, accepted for
+  // this stage and filed as draftspace-style-bar-vertical-budget, not the disclosure's, and the
+  // clamp above neither helps nor hurts it. Measured here so the day the bar gains a height budget
+  // shows up as this expectation flipping rather than as a silent hole in the matrix.
+  await page.setViewportSize({ width: 640, height: 360 });
   await page.goto("/");
   await expect(page.getByRole("main", { name: "Draftspace infinite canvas" })).toBeVisible();
   await page.keyboard.press("r");
-  await page.mouse.move(120, 200); await page.mouse.down(); await page.mouse.move(240, 290, { steps: 5 }); await page.mouse.up();
+  await page.mouse.move(120, 150); await page.mouse.down(); await page.mouse.move(240, 240, { steps: 5 }); await page.mouse.up();
   await expect(page.getByRole("toolbar", { name: "Style inspector" })).toBeVisible();
 
-  const disclose = page.getByRole("button", { name: "More fill colors" });
-  const popover = page.getByRole("group", { name: "More fill colors" });
-  await disclose.click();
-  // On a phone the eyedropper is only reachable through this disclosure, so a recent colour can
-  // only ever arrive this way. Six is the limit `updateRecentColors` keeps, and the sixth takes a
-  // slot on the bar as the colour the shape now carries, so what is left in here is the most the
-  // grid can ever hold: five curated colours, five recents and the eyedropper - eleven chips over
-  // three rows, where a fresh board's disclosure has one.
-  for (const hex of ["#123456", "#654321", "#abcdef", "#0f0f0f", "#112233", "#445566"]) {
-    await pickCustomColor(page, "Custom fill color", hex);
-  }
-
-  const grown = await popover.evaluate((panel) => {
-    const grid = panel.querySelector(".color-row")!;
-    return { chips: grid.children.length, scrolls: grid.scrollHeight > grid.clientHeight };
-  });
-  expect(grown.chips, "the worst case the grid can reach").toBe(11);
-
-  // A row is added at the TOP, because the disclosure hangs above its trigger, and the top bar is
-  // what is up there - so the window is not the only thing a grown row can be lost behind.
-  const box = (await popover.boundingBox())!;
-  const trigger = (await disclose.boundingBox())!;
-  expect(Math.round(box.y), "top edge").toBeGreaterThanOrEqual(0);
-  expect(Math.round(box.y + box.height), "bottom edge").toBeLessThanOrEqual(PHONE.height);
-  expect(Math.round(box.x), "left edge").toBeGreaterThanOrEqual(0);
-  expect(Math.round(box.x + box.width), "right edge").toBeLessThanOrEqual(PHONE.width);
-  expect(Math.round(box.x + box.width), "attached to its trigger")
-    .toBeCloseTo(Math.round(trigger.x + trigger.width), -1);
-
-  // Scrolled to, not merely present: each chip is brought into the grid's own scroll port and then
-  // asked whether a press at its centre would land on it, which is what the top bar takes away, and
-  // whether it is inside the disclosure at all - a row the grid spills instead of scrolling is
-  // hit-testable, but it is painted over the bar with no surface under it.
-  expect(await popover.evaluate((panel) => {
-    const surface = panel.getBoundingClientRect();
-    return [...panel.querySelector(".color-row")!.children]
-      .map((chip) => {
-        chip.scrollIntoView({ block: "nearest", inline: "nearest" });
-        const chipBox = chip.getBoundingClientRect();
-        const pressed = document.elementFromPoint(Math.round(chipBox.left + chipBox.width / 2), Math.round(chipBox.top + chipBox.height / 2));
-        const held = chipBox.top >= surface.top - 1 && chipBox.bottom <= surface.bottom + 1;
-        return { chip, ok: held && !!pressed && chip.contains(pressed) };
-      })
-      .filter(({ ok }) => !ok)
-      .map(({ chip }) => `${chip.getAttribute("aria-label") ?? chip.querySelector("input")?.getAttribute("aria-label")} at ${Math.round(chip.getBoundingClientRect().top)}`);
-  })).toEqual([]);
-
-  // And one of them pressed for real, from the second row, which only a scroll reaches: Playwright
-  // scrolls it into view itself and refuses to click what another element is painted over.
-  await popover.getByRole("button", { name: "Set fill to recent color #123456" }).click();
-  await expect.poll(async () => Object.values(await readStoredElements(page)).at(0)?.fillColor).toBe("#123456");
-  // Which took a scroll rather than a taller disclosure: the grid holds more than its port shows.
-  expect(grown.scrolls, "the grid is scrolled rather than grown").toBe(true);
+  const covered = await page.getByRole("button", { name: "More fill colors" }).evaluate((button) =>
+    Math.round(document.querySelector(".top-bar")!.getBoundingClientRect().bottom - button.getBoundingClientRect().top));
+  expect(covered, "640x360 leaves the palette button itself under the top bar").toBeGreaterThan(0);
 });
 
 test("handles mixed selections, rectangle-only corners, and recent custom colors", async ({ browserName, page }) => {

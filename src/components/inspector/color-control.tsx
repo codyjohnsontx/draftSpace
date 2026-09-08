@@ -1,12 +1,18 @@
 "use client";
 
-import { useEffect, useId, useRef, useState, type CSSProperties, type KeyboardEvent, type ReactNode } from "react";
+import { useEffect, useId, useLayoutEffect, useRef, useState, type CSSProperties, type KeyboardEvent, type ReactNode } from "react";
 import { Ban, Palette, Pipette } from "lucide-react";
 import { CURATED_COLORS, overflowColors, quickColors, type PaletteSwatch, type SharedValue } from "@/features/inspector/style-values";
 
 type ColorValue = SharedValue<string | null>;
 /** The second argument is what the disclosure wants done once a chip in it has been picked. */
 type SwatchRenderer = (swatch: PaletteSwatch, onPicked?: () => void) => ReactNode;
+
+/** Which edges of the grid still have chips behind them, named so the disclosure can say so. */
+function clippedEdges(grid: HTMLElement) {
+  return [grid.scrollTop > 1 && "above", grid.scrollTop + grid.clientHeight < grid.scrollHeight - 1 && "below"]
+    .filter(Boolean).join(" ");
+}
 
 /**
  * The rest of the palette, one press away. It is its own component so that a control which
@@ -22,6 +28,10 @@ function ColorOverflow({ label, swatches, eyedropper, renderSwatch }: {
   const [open, setOpen] = useState(false);
   const wrapRef = useRef<HTMLDivElement>(null);
   const triggerRef = useRef<HTMLButtonElement>(null);
+  const popoverRef = useRef<HTMLDivElement>(null);
+  const gridRef = useRef<HTMLDivElement>(null);
+  const [room, setRoom] = useState<number | null>(null);
+  const [clipped, setClipped] = useState("");
   const popoverId = useId();
   const lowerLabel = label.toLowerCase();
   // Escape and a picked chip both take the pressed control away with them, so each hands the focus
@@ -35,6 +45,36 @@ function ColorOverflow({ label, swatches, eyedropper, renderSwatch }: {
     document.addEventListener("pointerdown", closeOutside);
     return () => document.removeEventListener("pointerdown", closeOutside);
   }, [open]);
+
+  // How much room the grid genuinely has. The disclosure grows upward from a trigger the wrapped
+  // bar can put anywhere, so no constant can say; and the ceiling is the bottom of the top bar
+  // rather than the top of the window, because a row grown past it is hit-testable but painted
+  // over. Measured off the trigger and off offsetHeight so the panel's opening transform cannot
+  // skew it.
+  useLayoutEffect(() => {
+    const popover = popoverRef.current, grid = gridRef.current, trigger = triggerRef.current;
+    if (!open || !popover || !grid || !trigger) return;
+    const fit = () => {
+      const gap = parseFloat(getComputedStyle(document.documentElement).getPropertyValue("--space-2")) || 0;
+      const ceiling = (document.querySelector(".top-bar")?.getBoundingClientRect().bottom ?? 0) + gap;
+      const chrome = popover.offsetHeight - grid.offsetHeight;
+      setRoom(Math.max(0, Math.round(trigger.getBoundingClientRect().top - gap - ceiling - chrome)));
+    };
+    fit();
+    window.addEventListener("resize", fit);
+    return () => window.removeEventListener("resize", fit);
+  }, [open, swatches.length]);
+
+  // Whether that room was enough, re-read after the clamp lands and on every scroll: an edge that
+  // still says "there is more" once the user has reached the end is the same lie the other way up.
+  useLayoutEffect(() => {
+    const grid = gridRef.current;
+    if (!open || !grid) return;
+    const track = () => setClipped(clippedEdges(grid));
+    track();
+    grid.addEventListener("scroll", track);
+    return () => grid.removeEventListener("scroll", track);
+  }, [open, room, swatches.length]);
 
   return <div
     className="color-popover-wrap"
@@ -56,11 +96,22 @@ function ColorOverflow({ label, swatches, eyedropper, renderSwatch }: {
       aria-controls={popoverId}
       onClick={() => setOpen((wasOpen) => !wasOpen)}
     ><Palette size={15} aria-hidden="true" /></button>
-    {open && <div className="color-popover" id={popoverId} role="group" aria-label={`More ${lowerLabel} colors`}>
+    {open && <div
+      className="color-popover"
+      id={popoverId}
+      role="group"
+      aria-label={`More ${lowerLabel} colors`}
+      ref={popoverRef}
+      style={room === null ? undefined : { "--disclosure-fit": `${room}px` } as CSSProperties}
+    >
       <span className="color-popover-heading">{label}</span>
       {/* Closing on pick keeps the chip that just moved up into the row on show from reflowing
           the grid the pointer is still resting on. */}
-      <div className="color-row">{swatches.map((swatch) => renderSwatch(swatch, closeToTrigger))}{eyedropper}</div>
+      <div className="color-popover-port">
+        <div className="color-row" ref={gridRef}>{swatches.map((swatch) => renderSwatch(swatch, closeToTrigger))}{eyedropper}</div>
+        {["above", "below"].filter((edge) => clipped.includes(edge)).map((edge) =>
+          <span key={edge} className="color-popover-more" data-edge={edge} aria-hidden="true" />)}
+      </div>
     </div>}
   </div>;
 }

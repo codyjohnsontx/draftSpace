@@ -272,6 +272,14 @@ button { color: inherit; }
 .color-popover-wrap { position: relative; display: grid; flex: 0 0 auto; }
 .color-popover { position: absolute; z-index: var(--z-popover); bottom: calc(100% + var(--space-2)); right: 0; display: grid; gap: var(--space-2); width: max-content; padding: var(--space-3); background: var(--paper-raised); border: 0; border-radius: var(--radius-md); box-shadow: var(--elevation-2); animation: panel-in .14s ease both; }
 .color-popover-heading { color: var(--muted); font-size: var(--text-sm); font-weight: var(--weight-medium); }
+/* The grid, and the edges it is hiding chips behind. CSS cannot see an overflow, so the
+   disclosure measures its own and renders the edges it found; nothing is drawn when the grid is
+   showing everything it holds. Without it a scroll port exactly one row tall reads as a palette
+   with fewer colours in it - the eyedropper, which is emitted last, simply looks absent. */
+.color-popover-port { position: relative; min-height: 0; }
+.color-popover-more { position: absolute; left: 0; right: 0; height: var(--space-3); pointer-events: none; }
+.color-popover-more[data-edge="above"] { top: 0; background: linear-gradient(var(--paper-raised), transparent); }
+.color-popover-more[data-edge="below"] { bottom: 0; background: linear-gradient(transparent, var(--paper-raised)); }
 .color-popover .color-row { display: grid; grid-template-columns: repeat(6, 28px); gap: var(--space-2); }
 .segmented-control { display: flex; gap: 2px; padding: var(--space-1); background: var(--wash); border-radius: var(--radius-sm); }
 .segmented-control button { display: grid; min-width: 32px; height: 30px; place-items: center; padding: 0 var(--space-2); color: var(--muted); border: 0; border-radius: var(--radius-sm); background: transparent; cursor: pointer; font-family: var(--font-mono), monospace; font-size: var(--text-sm); }
@@ -457,14 +465,18 @@ kbd { display: inline-grid; min-width: 22px; height: 22px; place-items: center; 
      (its `transform` and `backdrop-filter` each make it the containing block, so the popover
      lands above the bar's whole wrapped height, off the top of the window), and centring on the
      trigger just moves the overflow to the right-hand end. */
-  /* Its height is capped at the one row it has with no recent colours, because that is all the
-     room the wrapped bar leaves above the trigger: a second row is added at the TOP, where the
-     top bar is, so the colours in it would be painted over rather than reachable. The rest of
-     the grid scrolls into that row instead. The scrollbar is hidden because a classic one is
-     drawn inside the popover, and 196px of chips plus a 15px gutter no longer clears the window
-     at the widths above. */
+  /* Its height is whatever room is genuinely left above the trigger, measured on open rather than
+     stated here: a row grown upward lands under the fixed top bar, where it is hit-testable but
+     painted over, and where the trigger sits depends on how the bar happened to wrap - so no
+     constant can express it. `--disclosure-fit` carries the measurement; the floor below it is
+     the one row a short phone has always had, so a viewport with no room to spare is no worse
+     than before and a tall one shows the whole grid without scrolling at all. The scrollbar stays
+     hidden - a classic one is drawn inside the popover, and 196px of chips plus a 15px gutter no
+     longer clears the window at the widths above - so `.color-popover-more` is what says the grid
+     holds more than its port is showing. */
   .color-popover .color-row {
-    grid-template-columns: repeat(5, 28px); max-height: calc(28px + var(--space-1) * 2);
+    grid-template-columns: repeat(5, 28px);
+    max-height: max(calc(28px + var(--space-1) * 2), var(--disclosure-fit, 0px));
     padding-block: var(--space-1); overflow-y: auto; scrollbar-width: none;
   }
   .collaboration-backdrop { padding: calc(var(--space-6) * 2) var(--space-2) var(--space-2); }.share-room-dialog { width: 100%; max-height: calc(100svh - var(--space-6) * 3); }.invite-code-block { grid-template-columns: 1fr; }.invite-code-block > button { grid-column: 1; grid-row: 3; width: max-content; margin-top: var(--space-2); }.join-room-panel { padding: var(--space-4); }.join-room-panel footer { flex-direction: column; align-items: center; gap: var(--space-2); }
