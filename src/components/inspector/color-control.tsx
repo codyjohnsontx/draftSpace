@@ -107,11 +107,11 @@ function ColorOverflow({ label, swatches, eyedropper, renderSwatch }: {
       <span className="color-popover-heading">{label}</span>
       {/* Closing on pick keeps the chip that just moved up into the row on show from reflowing
           the grid the pointer is still resting on. */}
-      <div className="color-popover-port">
-        <div className="color-row" ref={gridRef}>{swatches.map((swatch) => renderSwatch(swatch, closeToTrigger))}{eyedropper}</div>
+      <div className="color-row" ref={gridRef}>{swatches.map((swatch) => renderSwatch(swatch, closeToTrigger))}{eyedropper}</div>
+      {clipped !== "" && <span className="color-popover-marks" aria-hidden="true">
         {["above", "below"].filter((edge) => clipped.includes(edge)).map((edge) =>
-          <span key={edge} className="color-popover-more" data-edge={edge} aria-hidden="true" />)}
-      </div>
+          <span key={edge} className="color-popover-more" data-edge={edge} />)}
+      </span>}
     </div>}
   </div>;
 }

@@ -322,9 +322,39 @@ async function pickCustomColor(page: Page, label: string, hex: string) {
 /** The six a phone can reach only through the disclosure's own input, in the order it takes them. */
 const CUSTOM_COLORS = ["#123456", "#654321", "#abcdef", "#0f0f0f", "#112233", "#445566"];
 
-/** The edges the disclosure is claiming to have chips behind, in the order it drew them. */
-const affordanceEdges = (popover: ReturnType<Page["locator"]>) =>
-  popover.evaluate((panel) => [...panel.querySelectorAll(".color-popover-more")].map((edge) => edge.getAttribute("data-edge")));
+/**
+ * What the disclosure's own "there is more" mark is saying, and where it is drawn. Three things
+ * can go wrong with a mark and each is measured: the edges it claims - nothing at all when the
+ * grid is showing everything it holds - the chips it is drawn over, and whether the user can see
+ * it. Never over a chip, because an overlay on the port's edge washes the single row a one-row
+ * port is showing and a washed chip on a colour picker reads as a paler colour than it applies;
+ * and never above the top bar, which covers the top of a panel that has grown past its room, so
+ * a mark put up there is lost with it.
+ */
+const markPlacement = (popover: ReturnType<Page["locator"]>) =>
+  popover.evaluate((panel) => {
+    const marks = [...panel.querySelectorAll(".color-popover-more")];
+    const boxes = marks.map((mark) => mark.getBoundingClientRect());
+    const grid = panel.querySelector(".color-row") as HTMLElement;
+    const port = grid.getBoundingClientRect();
+    const ceiling = document.querySelector(".top-bar")!.getBoundingClientRect().bottom;
+    const name = (chip: Element) => chip.getAttribute("aria-label") ?? chip.querySelector("input")?.getAttribute("aria-label") ?? chip.tagName;
+    return {
+      edges: marks.map((mark) => mark.getAttribute("data-edge")),
+      // Each chip taken where it is painted rather than where it is laid out: a scrolled grid puts
+      // whole rows outside its port, and a row that is not painted at all cannot be painted over.
+      overdrawn: [...grid.children].filter((chip) => {
+        const box = chip.getBoundingClientRect();
+        const painted = {
+          left: Math.max(box.left, port.left), right: Math.min(box.right, port.right),
+          top: Math.max(box.top, port.top), bottom: Math.min(box.bottom, port.bottom),
+        };
+        return painted.left < painted.right && painted.top < painted.bottom && boxes.some((mark) =>
+          mark.left < painted.right && mark.right > painted.left && mark.top < painted.bottom && mark.bottom > painted.top);
+      }).map(name),
+      covered: marks.filter((_, index) => boxes[index].top < ceiling).map((mark) => mark.getAttribute("data-edge")),
+    };
+  });
 
 /** Puts the grid back where it opens, so what it is hiding is read from the top of its scroll. */
 const rewind = (popover: ReturnType<Page["locator"]>) =>
@@ -422,8 +452,8 @@ for (const { width, height, rows } of [
       // port exactly one row tall with a hidden scrollbar is otherwise a palette with the
       // eyedropper missing from it.
       await rewind(popover);
-      await expect.poll(() => affordanceEdges(popover), { message: `${where}: what the panel says it is hiding` })
-        .toEqual(shown.content > shown.port ? ["below"] : []);
+      await expect.poll(() => markPlacement(popover), { message: `${where}: what the panel says it is hiding, and where it says it` })
+        .toEqual({ edges: shown.content > shown.port ? ["below"] : [], overdrawn: [], covered: [] });
     }
 
     // Which way round it is hiding them, too: an edge still reading "more below" once the user has
@@ -433,8 +463,8 @@ for (const { width, height, rows } of [
       grid.scrollTop = grid.scrollHeight;
       return grid.scrollTop > 0;
     });
-    await expect.poll(() => affordanceEdges(popover), { message: `${width}x${height}: scrolled to the end` })
-      .toEqual(scrolled ? ["above"] : []);
+    await expect.poll(() => markPlacement(popover), { message: `${width}x${height}: scrolled to the end` })
+      .toEqual({ edges: scrolled ? ["above"] : [], overdrawn: [], covered: [] });
 
     // And one chip pressed for real from the far end of the grid, which is what a scrolled port has
     // to survive: Playwright brings it into view itself and refuses to click what is painted over.

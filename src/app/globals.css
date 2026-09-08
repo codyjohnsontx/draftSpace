@@ -11,8 +11,10 @@
      and could never be re-tuned together. */
   --ink-rgb: 41 39 36;
   --ink: rgb(var(--ink-rgb));
-  /* .66, not a rounder number: it is the lowest alpha on this ramp that clears WCAG AA
-     against both grounds it is ever read on - 4.72:1 over --canvas, 4.86:1 over --surface.
+  /* .66, not a rounder number: it is the lowest alpha on this ramp that clears WCAG AA over
+     --canvas, the one opaque ground it is ever read on, at 4.72:1. The chrome has no single
+     ratio to state: --surface is .88 over whatever the board holds behind the blur, so its
+     ground varies - 4.86:1 where paper shows through, 4.32:1 at its worst over black.
      The flat #716c64 this replaced measured 4.74:1, so the ramp costs no contrast. */
   --muted: rgb(var(--ink-rgb) / .66);
   --line: rgb(var(--ink-rgb) / .12);
@@ -272,14 +274,21 @@ button { color: inherit; }
 .color-popover-wrap { position: relative; display: grid; flex: 0 0 auto; }
 .color-popover { position: absolute; z-index: var(--z-popover); bottom: calc(100% + var(--space-2)); right: 0; display: grid; gap: var(--space-2); width: max-content; padding: var(--space-3); background: var(--paper-raised); border: 0; border-radius: var(--radius-md); box-shadow: var(--elevation-2); animation: panel-in .14s ease both; }
 .color-popover-heading { color: var(--muted); font-size: var(--text-sm); font-weight: var(--weight-medium); }
-/* The grid, and the edges it is hiding chips behind. CSS cannot see an overflow, so the
-   disclosure measures its own and renders the edges it found; nothing is drawn when the grid is
-   showing everything it holds. Without it a scroll port exactly one row tall reads as a palette
-   with fewer colours in it - the eyedropper, which is emitted last, simply looks absent. */
-.color-popover-port { position: relative; min-height: 0; }
-.color-popover-more { position: absolute; left: 0; right: 0; height: var(--space-3); pointer-events: none; }
-.color-popover-more[data-edge="above"] { top: 0; background: linear-gradient(var(--paper-raised), transparent); }
-.color-popover-more[data-edge="below"] { bottom: 0; background: linear-gradient(transparent, var(--paper-raised)); }
+/* Which edges the grid still has chips behind. CSS cannot see an overflow, so the disclosure
+   measures its own and marks the edges it found; nothing is drawn when the grid is showing
+   everything it holds. Without it a scroll port exactly one row tall reads as a palette with
+   fewer colours in it - the eyedropper, which is emitted last, simply looks absent.
+   Two things fix where it is drawn. It is a mark in the panel's own bottom padding rather than
+   a gradient over the grid, because an overlay on the port's edge washes the single row of chips
+   a one-row port is showing, and a washed chip on a colour picker reads as a paler colour than
+   the one it applies. And it is at the bottom rather than by the heading, because a panel with
+   no room to spare grows past the top bar and the heading is the end that goes behind it, while
+   the end hung off the trigger is on screen by construction. Absolute, so it takes no height:
+   `--disclosure-fit` measures the chrome before the mark can exist. */
+.color-popover-marks { position: absolute; left: 0; right: 0; bottom: var(--space-1); display: flex; justify-content: center; gap: var(--space-1); color: var(--muted); pointer-events: none; }
+.color-popover-more { width: 0; height: 0; border-inline: 4px solid transparent; }
+.color-popover-more[data-edge="above"] { border-bottom: 5px solid currentcolor; }
+.color-popover-more[data-edge="below"] { border-top: 5px solid currentcolor; }
 .color-popover .color-row { display: grid; grid-template-columns: repeat(6, 28px); gap: var(--space-2); }
 .segmented-control { display: flex; gap: 2px; padding: var(--space-1); background: var(--wash); border-radius: var(--radius-sm); }
 .segmented-control button { display: grid; min-width: 32px; height: 30px; place-items: center; padding: 0 var(--space-2); color: var(--muted); border: 0; border-radius: var(--radius-sm); background: transparent; cursor: pointer; font-family: var(--font-mono), monospace; font-size: var(--text-sm); }
