@@ -2,7 +2,7 @@
 
 ## Methodology
 
-The benchmark suite measures deterministic boards at the current board schema version containing 100, 500, or 1,000 rectangles. Rectangles remain the benchmark element type so Phase 2.1A can be compared with the Phase 1.2B baseline. The `all-visible` fixture packs every minimum-readable rectangle within one 1280×720 viewport. The `distributed` fixture spaces the same deterministic elements across a large world grid so only a small subset is visible at once. Fixtures use fixed IDs, timestamps, dimensions, positions, and styles, and are validated with the production Zod schema.
+The benchmark suite measures deterministic boards at the current board schema version containing 100, 500, or 1,000 rectangles. Rectangles remain the benchmark element type so Phase 2.1A can be compared with the Phase 1.2B baseline. The `all-visible` fixture packs every minimum-readable rectangle within one 1280×720 viewport. The `distributed` fixture spaces the same deterministic elements across a large world grid so only a small subset is visible at once. Fixtures use fixed IDs, timestamps, dimensions, positions, and styles, and are validated with the production Zod schema. They hold no connectors, and the suite exercises only the 2D canvas; the 3D space view is not instrumented.
 
 Playwright creates an isolated browser context, writes the fixture directly to IndexedDB, sets the last-opened board key, and reloads Draftspace in benchmark mode. It never uses a developer's browser profile or normal board history. The first five scene updates are warmed and discarded. Each measured run performs 30 pan/zoom updates, 50 point selections across hits and misses, 10 committed marquee gestures, five separately saved board changes, and a pointer sweep across content and empty canvas with the connector tool armed. Reports contain environment and timing metadata only, never board content.
 
@@ -10,7 +10,7 @@ The 100- and 500-element fixtures run once per layout. Each 1,000-element fixtur
 
 ## Measurements
 
-- `scene-render`: synchronous Canvas 2D work inside `renderScene`, including background, elements, and draft.
+- `scene-render`: synchronous Canvas 2D work inside `renderScene`, including background, connectors, elements, and draft.
 - `point-hit-test`: the reverse-layer selection scan on pointer-down.
 - `connect-pick`: the reverse-layer anchor scan on every pointer move while the connector tool is armed; hovering empty canvas visits every element.
 - `marquee-select`: the full-containment scan when a marquee commits.

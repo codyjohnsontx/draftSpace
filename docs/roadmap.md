@@ -126,6 +126,7 @@ This roadmap favors interaction trust over feature count. Draftspace should earn
 - [x] Connector styling: color, width, kind, and label
 - [x] Arrowheads at either end, both, or neither *(a defaulted field; no schema version)*
 - [x] Connection updates during shape movement
+- [x] 3D space view over the same board, with node kinds, architectural tiers, and connectors lifted between them *(no control sets a kind, tier, or label yet)*
 - Straight, elbow, and curved connectors
 - Connector control points
 - Alignment and distribution
@@ -155,6 +156,8 @@ This roadmap favors interaction trust over feature count. Draftspace should earn
 **How large a head is drawn:** A head grows with the ink it caps rather than being one fixed size, because the width control offers edges four times the default's - a wide edge would otherwise end in a barb narrower than its own line, which reads as the line simply stopping. The default 2-unit edge keeps the exact size every arrowhead in the app has always been drawn at, so no existing diagram changes.
 
 **An edge while its ends are being dragged:** A move or a resize draws its elements at boxes that are not yet on the board, and an edge is routed against whichever box its ends are being *drawn* at rather than against the stored one. So a connector leaves the shape's own side the whole way through a drag - re-resolving a facing port the moment the two objects pass each other, and coming in as a shape is pulled narrower - instead of staying pinned to where the shape used to be and snapping across on release. The gesture hands on only the elements it is holding, keyed by id, so an edge bound to something nothing is dragging costs a single failed lookup and the board is never walked; with no gesture in flight there is no preview at all and routing reads the document, exactly as it did. This is what makes the acceptance rule ("connected objects remain attached through move, resize, undo, redo") true of the frames as well as of the result: what the drag showed is what the release stored, which is the same rule the shape preview itself already follows.
+
+**The 3D space view:** The top bar switches the open board between the 2D canvas and a 3D space that draws the same document, through an orthographic camera that reads like the canvas from straight above and separates architectural tiers as it tilts. A shape's kind - plain, service, datastore, queue, actor, decision, or boundary - chooses its 3D form, so a datastore stands as a stack of disks and a queue as a row of chips, and its tier sets how high it sits. In the space a node is dragged within its tier, a connector is drawn by dragging from a node's port to another node, and Delete removes the selected nodes, each through the same command the canvas would issue, so undo, saving, and live rooms treat it no differently. Nothing in the app sets a kind, a tier, or a shape's label yet: a new shape is a plain node on the ground tier, so the forms and tiers show only on a board whose stored document already carries them. [`architecture.md`](architecture.md) records the design.
 
 **Follow-up:** A new edge is drawn as an elbow pointing at what it was dragged to, and the heads are chosen after the fact. Choosing them before drawing needs a tool-options surface, worth building once for every tool rather than putting more pickers in the tool rail.
 

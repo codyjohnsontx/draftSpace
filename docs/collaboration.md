@@ -15,7 +15,7 @@ The host must remain available. When its connection drops, guests immediately be
 5. The host validates the command, board ID, and base revision, applies it to the local board, and accepts it through the relay.
 6. The relay increments the room revision and broadcasts the accepted command. A stale or rejected editor requests a complete validated host snapshot.
 
-Commands cover element creation, deletion, field updates, and board metadata/preferences. Viewport position is personal and excluded. Presence messages carry cursor position, selection IDs/count, active tool, and an optional presenting viewport; they never enter history or IndexedDB.
+Commands are the typed `BoardCommand` union in `src/core/commands/board-command.ts`: creation, deletion, and field updates for elements and for connectors, plus board metadata and preferences. An edit made in the 3D space view is one of the same commands. Viewport position is personal and excluded. Presence messages carry cursor position, selection IDs/count, active tool, and an optional presenting viewport; they never enter history or IndexedDB.
 
 ## Persistence and security
 
